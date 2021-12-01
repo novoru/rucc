@@ -10,9 +10,9 @@ pub enum TokenKind {
 
 #[derive(Debug, PartialEq)]
 pub struct Token<'a> {
-    kind:       TokenKind,
+    pub kind:   TokenKind,
     loc:        usize,
-    val:        Option<u32>,
+    pub val:        Option<u32>,
     literal:    Rc<&'a str>,
 }
 
@@ -69,10 +69,7 @@ impl<'a> Tokenizer<'a> {
 
             match self.ch {
                 '0' ..= '9' =>  self.read_num(),
-                '+'         |
-                '-'         |
-                '*'         |
-                '/'         =>  {
+                '+' | '-' | '*' | '/' | '(' | ')' =>  {
                     self.tokens.push(Token::new(
                         TokenKind::Punct, self.pos, Rc::new(&self.input[self.pos..self.pos+1]
                     )));
@@ -125,6 +122,24 @@ impl<'a> Tokenizer<'a> {
             literal.parse::<u32>().unwrap(), start, Rc::new(literal)
         ));
     }
+
+    pub fn consume(&mut self, op: &str) -> bool {
+        if self.idx >= self.tokens.len() {
+            return false;
+        }
+        let token = &self.tokens[self.idx];
+
+        if token.equal(op) {
+            self.next_token();
+            return true;
+        }
+
+        return false;
+    }
+
+    pub fn cur_token(&self) -> &Token {
+        &self.tokens[self.idx]
+    }
 }
 
 #[test]
@@ -136,4 +151,15 @@ fn test_tokenizer() {
     assert_eq!(*tokenizer.next_token().unwrap(), Token::new_num(789, 9, Rc::new("789")));
     assert_eq!(*tokenizer.next_token().unwrap(), Token::new(TokenKind::Eof, 12, Rc::new("")));
     assert_eq!(tokenizer.next_token(), None);
+}
+
+#[test]
+fn test_consume() {
+    let mut tokenizer = Tokenizer::new("(1+2)");
+    tokenizer.tokenize();
+    assert!(tokenizer.consume("("));
+    assert!(tokenizer.consume("1"));
+    assert!(tokenizer.consume("+"));
+    assert!(tokenizer.consume("2"));
+    assert!(tokenizer.consume(")"));
 }
