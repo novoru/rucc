@@ -1,4 +1,4 @@
-use std::iter::Iterator;
+use std::rc::Rc;
 
 #[derive(Debug, PartialEq)]
 pub enum TokenKind {
@@ -13,30 +13,30 @@ pub struct Token<'a> {
     kind:       TokenKind,
     loc:        usize,
     val:        Option<u32>,
-    literal:    &'a str,
+    literal:    Rc<&'a str>,
 }
 
 impl<'a> Token<'a> {
-    pub fn new(kind: TokenKind, loc: usize, s: &'a str) -> Self {
+    pub fn new(kind: TokenKind, loc: usize, s: Rc<&'a str>) -> Self {
         Token {
             kind:       kind,
             loc:        loc,
             val:        None,
-            literal:    s,
+            literal:    s.clone(),
         }
     }
 
-    pub fn new_num(val: u32, loc: usize, s: &'a str) -> Self {
+    pub fn new_num(val: u32, loc: usize, s: Rc<&'a str>) -> Self {
         Token {
             kind:       TokenKind::Int,
             loc:        loc,
             val:        Some(val),
-            literal:    s,
+            literal:    s.clone(),
         }
     }
 
     pub fn equal(&self, op: &str) -> bool {
-        self.literal == op
+        *self.literal == op
     }
 }
 
@@ -73,12 +73,14 @@ impl<'a> Tokenizer<'a> {
                 '-'         |
                 '*'         |
                 '/'         =>  {
-                    self.tokens.push(Token::new(TokenKind::Punct, self.pos, &self.input[self.pos..self.pos+1]));
+                    self.tokens.push(Token::new(
+                        TokenKind::Punct, self.pos, Rc::new(&self.input[self.pos..self.pos+1]
+                    )));
                     self.read_char();
                 }
                 '\0'        =>  {
                     self.tokens.push(Token::new(
-                        TokenKind::Eof, self.pos, ""
+                        TokenKind::Eof, self.pos, Rc::new("")
                     ));
                     break;
                 },
@@ -119,7 +121,9 @@ impl<'a> Tokenizer<'a> {
             self.read_char();
         }
         let literal = &self.input[start..self.pos];
-        self.tokens.push(Token::new_num(literal.parse::<u32>().unwrap(), start, literal));
+        self.tokens.push(Token::new_num(
+            literal.parse::<u32>().unwrap(), start, Rc::new(literal)
+        ));
     }
 }
 
@@ -127,9 +131,9 @@ impl<'a> Tokenizer<'a> {
 fn test_tokenizer() {
     let mut tokenizer = Tokenizer::new(" 123 456\t789");
     tokenizer.tokenize();
-    assert_eq!(*tokenizer.next_token().unwrap(), Token::new_num(123, 1, "123"));
-    assert_eq!(*tokenizer.next_token().unwrap(), Token::new_num(456, 5, "456"));
-    assert_eq!(*tokenizer.next_token().unwrap(), Token::new_num(789, 9, "789"));
-    assert_eq!(*tokenizer.next_token().unwrap(), Token::new(TokenKind::Eof, 12, ""));
+    assert_eq!(*tokenizer.next_token().unwrap(), Token::new_num(123, 1, Rc::new("123")));
+    assert_eq!(*tokenizer.next_token().unwrap(), Token::new_num(456, 5, Rc::new("456")));
+    assert_eq!(*tokenizer.next_token().unwrap(), Token::new_num(789, 9, Rc::new("789")));
+    assert_eq!(*tokenizer.next_token().unwrap(), Token::new(TokenKind::Eof, 12, Rc::new("")));
     assert_eq!(tokenizer.next_token(), None);
 }
