@@ -1,4 +1,4 @@
-use crate::tokenizer::{ TokenKind, Token, Tokenizer };
+use crate::tokenizer::{ TokenKind, Tokenizer };
 
 #[derive(Debug, PartialEq)]
 pub enum Node {
@@ -10,7 +10,7 @@ pub enum Node {
 }
 
 #[derive(Debug)]
-struct Parser<'a> {
+pub struct Parser<'a> {
     tokenizer:  &'a mut Tokenizer<'a>,
 }
 

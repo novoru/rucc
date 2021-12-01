@@ -1,6 +1,7 @@
 use std::{env, process};
-
-// use rucc::tokenizer::Tokenizer;
+use rucc::tokenizer::Tokenizer;
+use rucc::parser::Parser;
+use rucc::codegen::CodeGenerator;
 
 fn main() {
     let args: Vec<String> = env::args().collect();
@@ -12,8 +13,10 @@ fn main() {
 
     let input = &args[1];
 
-    println!("  .global main");
-    println!("main:");
-    println!("  mov ${}, %rax", input);
-    println!("  ret");
+    let mut tokenizer = Tokenizer::new(input);
+    tokenizer.tokenize();
+    let mut parser = Parser::new(&mut tokenizer);
+    let prog = parser.parse().unwrap();
+    let mut codegen = CodeGenerator::new();
+    codegen.gen(&prog);
 }
