@@ -5,6 +5,7 @@ rucc: $(EXE) $(SRCS)
 	cargo build
 
 test: rucc
+	cargo test
 	bash ./test.sh
 
 clean:
