@@ -65,28 +65,33 @@ impl<'a> Tokenizer<'a> {
 
     pub fn tokenize(&mut self) {
         self.read_char();
-        loop {
-            while self.ch.is_whitespace() {
+        while self.ch != '\0' {
+            if self.ch.is_whitespace() {
                 self.read_char();
+                continue;
             }
 
-            match self.ch {
-                '0' ..= '9' =>  self.read_num(),
-                '+' | '-' | '*' | '/' | '(' | ')' =>  {
-                    self.tokens.push(Token::new(
-                        TokenKind::Punct, self.pos, Rc::new(&self.input[self.pos..self.pos+1]
-                    )));
+            if self.ch.is_digit(10) {
+                self.read_num();
+                continue;
+            }
+
+            let punct_len = self.read_punct(&self.input[self.pos..self.input.len()]);
+            if punct_len != 0 {
+                self.tokens.push(Token::new(
+                    TokenKind::Punct, self.pos, Rc::new(&self.input[self.pos..self.pos+punct_len]
+                )));
+                for _ in 0..punct_len {
                     self.read_char();
                 }
-                '\0'        =>  {
-                    self.tokens.push(Token::new(
-                        TokenKind::Eof, self.pos, Rc::new("")
-                    ));
-                    break;
-                },
-                _           =>  self.error_at(self.pos, "invalide token"),
+                continue;
             }
+
+            self.error_at(self.pos, "invalide token");
         }
+        self.tokens.push(Token::new(
+            TokenKind::Eof, self.pos, Rc::new("")
+        ));
     }
 
     pub fn next_token(&mut self) -> Option<&Token> {
@@ -128,8 +133,21 @@ impl<'a> Tokenizer<'a> {
         ));
     }
 
+    fn read_punct(&self, s: &str) -> usize {
+        if  s.starts_with("==") || s.starts_with("!=") ||
+            s.starts_with("<=") || s.starts_with(">=") {
+            return 2;
+        }
+
+        if self.ch.is_ascii_punctuation() {
+            1
+        } else {
+            0
+        }
+    }
+
     pub fn consume(&mut self, op: &str) -> bool {
-        if self.idx >= self.tokens.len() {
+        if self.idx >= self.tokens.len() {  
             return false;
         }
         let token = &self.tokens[self.idx];

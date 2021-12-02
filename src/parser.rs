@@ -7,6 +7,10 @@ pub enum Node {
     Mul { lhs: Box<Node>, rhs: Box<Node> },
     Div { lhs: Box<Node>, rhs: Box<Node> },
     Neg (Box<Node>),
+    Eq  { lhs: Box<Node>, rhs: Box<Node> },
+    Ne  { lhs: Box<Node>, rhs: Box<Node> },
+    Lt  { lhs: Box<Node>, rhs: Box<Node> },
+    Le  { lhs: Box<Node>, rhs: Box<Node> },
     Num (u32),
 }
 
@@ -19,6 +23,73 @@ impl<'a> Parser<'a> {
     pub fn new(tokenizer: &'a mut Tokenizer<'a>) -> Self {
         Parser {
             tokenizer:  tokenizer,
+        }
+    }
+
+    // equality = relational ("==" relational | "!=" relational)*
+    fn equality(&mut self) -> Option<Node> {
+        let mut node = self.relational().unwrap();
+
+        loop {
+            if self.tokenizer.consume("==") {
+                node = Node::Eq { lhs: Box::new(node), rhs: Box::new(self.relational().unwrap()) };
+                continue;
+            }
+            
+            if self.tokenizer.consume("!=") {
+                node = Node::Ne { lhs: Box::new(node), rhs: Box::new(self.relational().unwrap()) };
+                continue;
+            }
+            
+            return Some(node);
+        }
+    }
+
+    // relational = add ("<" add | "<=" add | ">" add | ">=" add)*
+    fn relational(&mut self) -> Option<Node> {
+        let mut node = self.add().unwrap();
+
+        loop {
+            if self.tokenizer.consume("<") {
+                node = Node::Lt { lhs: Box::new(node), rhs: Box::new(self.add().unwrap()) };
+                continue;
+            }
+            
+            if self.tokenizer.consume("<=") {
+                node = Node::Le { lhs: Box::new(node), rhs: Box::new(self.add().unwrap()) };
+                continue;
+            }
+            
+            if self.tokenizer.consume(">") {
+                node = Node::Lt { lhs: Box::new(self.add().unwrap()), rhs: Box::new(node) };
+                continue;
+            }
+            
+            if self.tokenizer.consume(">=") {
+                node = Node::Le { lhs: Box::new(self.add().unwrap()), rhs: Box::new(node) };
+                continue;
+            }
+
+            return Some(node);
+        }
+    }
+
+    // add = mul ("+" mul | "-" mul)*
+    fn add(&mut self) -> Option<Node> {
+        let mut node = self.mul().unwrap();
+
+        loop {
+            if self.tokenizer.consume("+") {
+                node = Node::Add { lhs: Box::new(node), rhs: Box::new(self.mul().unwrap()) };
+                continue;
+            }
+            
+            if self.tokenizer.consume("-") {
+                node = Node::Sub { lhs: Box::new(node), rhs: Box::new(self.mul().unwrap()) };
+                continue;
+            }
+
+            return Some(node);
         }
     }
 
@@ -77,23 +148,9 @@ impl<'a> Parser<'a> {
         self.primary()
     }
 
-    // expr = mul ("+" mul | "-" mul)*
+    // expr = equality
     fn expr(&mut self) -> Option<Node> {
-        let mut node = self.mul().unwrap();
-
-        loop {
-            if self.tokenizer.consume("+") {
-                node = Node::Add { lhs: Box::new(node), rhs: Box::new(self.mul().unwrap()) };
-                continue;
-            }
-
-            if self.tokenizer.consume("-") {
-                node = Node::Sub { lhs: Box::new(node), rhs: Box::new(self.mul().unwrap()) };
-                continue;
-            }
-
-            return Some(node);
-        }
+        self.equality()
     }
 
     pub fn parse(&mut self) -> Option<Node> {

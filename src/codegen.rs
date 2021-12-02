@@ -53,9 +53,45 @@ impl CodeGenerator {
                 println!("  cqo");
                 println!("  idiv %rdi");
             },
-            Node::Neg(node) =>   {
+            Node::Neg (node)    =>   {
                 self.gen_expr(node);
                 println!("  neg %rax");
+            },
+            Node::Eq { lhs, rhs }   =>  {
+                self.gen_expr(rhs);
+                self.push();
+                self.gen_expr(lhs);
+                self.pop("%rdi");
+                println!("  cmp %rdi, %rax");
+                println!("  sete %al");
+                println!("  movzb %al, %rax");
+            },
+            Node::Ne { lhs, rhs }   =>  {
+                self.gen_expr(rhs);
+                self.push();
+                self.gen_expr(lhs);
+                self.pop("%rdi");
+                println!("  cmp %rdi, %rax");
+                println!("  setne %al");
+                println!("  movzb %al, %rax");
+            },
+            Node::Lt { lhs, rhs }   =>  {
+                self.gen_expr(rhs);
+                self.push();
+                self.gen_expr(lhs);
+                self.pop("%rdi");
+                println!("  cmp %rdi, %rax");
+                println!("  setl %al");
+                println!("  movzb %al, %rax");
+            },
+            Node::Le { lhs, rhs }   =>  {
+                self.gen_expr(rhs);
+                self.push();
+                self.gen_expr(lhs);
+                self.pop("%rdi");
+                println!("  cmp %rdi, %rax");
+                println!("  setle %al");
+                println!("  movzb %al, %rax");
             },
         }
     }
