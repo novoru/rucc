@@ -6,6 +6,7 @@ pub enum Node {
     Sub { lhs: Box<Node>, rhs: Box<Node> },
     Mul { lhs: Box<Node>, rhs: Box<Node> },
     Div { lhs: Box<Node>, rhs: Box<Node> },
+    Neg (Box<Node>),
     Num (u32),
 }
 
@@ -43,23 +44,37 @@ impl<'a> Parser<'a> {
         None
     }
 
-    // mul = primary ("*" primary | "/" primary)*
+    // mul = unary ("*" unary | "/" unary)*
     fn mul(&mut self) -> Option<Node> {
-        let mut node = self.primary().unwrap();
+        let mut node = self.unary().unwrap();
         
         loop {
             if self.tokenizer.consume("*") {
-                node = Node::Mul { lhs: Box::new(node), rhs: Box::new(self.primary().unwrap()) };
+                node = Node::Mul { lhs: Box::new(node), rhs: Box::new(self.unary().unwrap()) };
                 continue;
             }
             
             if self.tokenizer.consume("/") {
-                node = Node::Div { lhs: Box::new(node), rhs: Box::new(self.primary().unwrap()) };
+                node = Node::Div { lhs: Box::new(node), rhs: Box::new(self.unary().unwrap()) };
                 continue;
             }
 
             return Some(node);
         }
+    }
+
+    // unary = ("+" | "-") unary
+    //       | primary
+    fn unary(&mut self) -> Option<Node> {
+        if self.tokenizer.consume("+") {
+            return self.unary();
+        }
+
+        if self.tokenizer.consume("-") {
+            return Some(Node::Neg(Box::new(self.unary().unwrap())));
+        }
+
+        self.primary()
     }
 
     // expr = mul ("+" mul | "-" mul)*

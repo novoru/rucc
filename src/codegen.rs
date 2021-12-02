@@ -53,6 +53,10 @@ impl CodeGenerator {
                 println!("  cqo");
                 println!("  idiv %rdi");
             },
+            Node::Neg(node) =>   {
+                self.gen_expr(node);
+                println!("  neg %rax");
+            },
         }
     }
 
