@@ -13,7 +13,7 @@ pub enum TokenKind {
 pub struct Token<'a> {
     pub kind:   TokenKind,
     loc:        usize,
-    pub val:        Option<u32>,
+    pub val:    Option<u32>,
     literal:    Rc<&'a str>,
 }
 
@@ -103,7 +103,7 @@ impl<'a> Tokenizer<'a> {
         Some(token)
     }
 
-    fn skip(&mut self, s: &str) {
+    pub fn skip(&mut self, s: &str) {
         let token = self.cur_token();
         if !token.equal(s) {
             self.error_tok(token, &format!("expected '{}'", s));

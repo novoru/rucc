@@ -1,3 +1,4 @@
+use crate::util::error;
 use crate::parser::Node;
 
 pub struct CodeGenerator {
@@ -93,7 +94,16 @@ impl CodeGenerator {
                 println!("  setle %al");
                 println!("  movzb %al, %rax");
             },
+            _   =>  error("invalid node"),
         }
+    }
+
+    fn gen_stmt(&mut self, node: &Node) {
+        if let Node::ExprStmt(expr) = node {
+            self.gen_expr(&expr);
+            return;
+        }
+        error("invalid statement");
     }
 
     pub fn gen(&mut self, node: &Node) {
@@ -102,10 +112,14 @@ impl CodeGenerator {
         println!("  .global main");
         println!("main:");
 
-        self.gen_expr(node);
+        if let Node::Program(ref stmts) = node {
+            for stmt in stmts {
+                self.gen_stmt(&stmt);
+                assert!(self.depth==0);
+            }
+        }
 
         println!("  ret");
-        assert!(self.depth==0);
     }
 }
 
@@ -114,7 +128,7 @@ fn test_codegen() {
     use crate::tokenizer::Tokenizer;
     use crate::parser::Parser;
 
-    let mut tokenizer = Tokenizer::new("12+42*(3-9)");
+    let mut tokenizer = Tokenizer::new("12+42*(3-9);");
     tokenizer.tokenize();
     let mut parser = Parser::new(&mut tokenizer);
     let prog = parser.parse().unwrap();

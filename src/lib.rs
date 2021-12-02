@@ -1,3 +1,4 @@
+pub mod util;
 pub mod tokenizer;
 pub mod parser;
 pub mod codegen;

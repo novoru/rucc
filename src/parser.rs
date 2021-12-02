@@ -1,17 +1,20 @@
 use crate::tokenizer::{ TokenKind, Tokenizer };
 
+// Ast node type
 #[derive(Debug, PartialEq)]
 pub enum Node {
-    Add { lhs: Box<Node>, rhs: Box<Node> },
-    Sub { lhs: Box<Node>, rhs: Box<Node> },
-    Mul { lhs: Box<Node>, rhs: Box<Node> },
-    Div { lhs: Box<Node>, rhs: Box<Node> },
-    Neg (Box<Node>),
-    Eq  { lhs: Box<Node>, rhs: Box<Node> },
-    Ne  { lhs: Box<Node>, rhs: Box<Node> },
-    Lt  { lhs: Box<Node>, rhs: Box<Node> },
-    Le  { lhs: Box<Node>, rhs: Box<Node> },
-    Num (u32),
+    Add         { lhs: Box<Node>, rhs: Box<Node> }, // +
+    Sub         { lhs: Box<Node>, rhs: Box<Node> }, // -
+    Mul         { lhs: Box<Node>, rhs: Box<Node> }, // *
+    Div         { lhs: Box<Node>, rhs: Box<Node> }, // /
+    Neg         ( Box<Node> ),                      // unary -
+    Eq          { lhs: Box<Node>, rhs: Box<Node> }, // ==
+    Ne          { lhs: Box<Node>, rhs: Box<Node> }, // !=
+    Lt          { lhs: Box<Node>, rhs: Box<Node> }, // <
+    Le          { lhs: Box<Node>, rhs: Box<Node> }, // <=
+    ExprStmt    ( Box<Node> ),                      // Expression statement
+    Program     ( Vec<Box<Node>>),                  // Program
+    Num         ( u32 ),                            // Integer
 }
 
 #[derive(Debug)]
@@ -24,6 +27,19 @@ impl<'a> Parser<'a> {
         Parser {
             tokenizer:  tokenizer,
         }
+    }
+
+    // stmt = expr-stmt
+    fn stmt(&mut self) -> Option<Node> {
+        self.expr_stmt()
+    }
+
+    // expr-stmt = expr ";"
+    fn expr_stmt(&mut self) -> Option<Node> {
+        let node = Node::ExprStmt(Box::new(self.expr().unwrap()));
+        self.tokenizer.skip(";");
+
+        Some(node)
     }
 
     // equality = relational ("==" relational | "!=" relational)*
@@ -153,26 +169,38 @@ impl<'a> Parser<'a> {
         self.equality()
     }
 
+    // program = stmt*
     pub fn parse(&mut self) -> Option<Node> {
-        self.expr()
+        let mut prog = Node::Program(Vec::new());
+        while self.tokenizer.cur_token().kind != TokenKind::Eof {
+            if let Node::Program(ref mut stmts) = prog {
+                stmts.push(Box::new(self.stmt().unwrap()));
+            }
+        }
+
+        Some(prog)
     }
 }
 
 #[test]
 fn test_parser() {
-    let mut tokenizer = Tokenizer::new("12+42*(3-9)");
+    let mut tokenizer = Tokenizer::new("12+42*(3-9);");
     tokenizer.tokenize();
     let mut parser = Parser::new(&mut tokenizer);
     let prog = parser.parse().unwrap();
-    let expected = Node::Add {
-        lhs: Box::new(Node::Num(12)),
-        rhs: Box::new(Node::Mul {
-            lhs: Box::new(Node::Num(42)),
-            rhs: Box::new(Node::Sub {
-                lhs: Box::new(Node::Num(3)),
-                rhs: Box::new(Node::Num(9)),
-            })
-        }),
-    };
+    let expected = Node::Program(vec![Box::new(
+        Node::ExprStmt(Box::new(
+            Node::Add {
+                lhs: Box::new(Node::Num(12)),
+                rhs: Box::new(Node::Mul {
+                    lhs: Box::new(Node::Num(42)),
+                    rhs: Box::new(Node::Sub {
+                        lhs: Box::new(Node::Num(3)),
+                        rhs: Box::new(Node::Num(9)),
+                    })
+                }),
+            }
+        ))
+    )]);
     assert_eq!(prog, expected);
 }
