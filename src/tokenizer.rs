@@ -1,3 +1,4 @@
+use std::process;
 use std::rc::Rc;
 
 #[derive(Debug, PartialEq)]
@@ -65,7 +66,9 @@ impl<'a> Tokenizer<'a> {
     pub fn tokenize(&mut self) {
         self.read_char();
         loop {
-            self.skip();
+            while self.ch.is_whitespace() {
+                self.read_char();
+            }
 
             match self.ch {
                 '0' ..= '9' =>  self.read_num(),
@@ -81,7 +84,7 @@ impl<'a> Tokenizer<'a> {
                     ));
                     break;
                 },
-                _           =>  panic!(),
+                _           =>  self.error_at(self.pos, "invalide token"),
             }
         }
     }
@@ -95,10 +98,12 @@ impl<'a> Tokenizer<'a> {
         Some(token)
     }
 
-    fn skip(&mut self) {
-        while self.ch.is_whitespace() {
-            self.read_char();
+    fn skip(&mut self, s: &str) {
+        let token = self.cur_token();
+        if !token.equal(s) {
+            self.error_tok(token, &format!("expected '{}'", s));
         }
+        self.next_token();
     }
 
     fn read_char(&mut self) {
@@ -139,6 +144,17 @@ impl<'a> Tokenizer<'a> {
 
     pub fn cur_token(&self) -> &Token {
         &self.tokens[self.idx]
+    }
+
+    fn error_at(&self, loc: usize, s: &str) {
+        eprintln!("{}", &self.input);
+        eprint!("{:indent$}^ ", "", indent=loc);
+        eprintln!("{}", s);
+        process::exit(1);
+    }
+
+    pub fn error_tok(&self, token: &Token, s: &str) {
+        self.error_at(token.loc, s);
     }
 }
 

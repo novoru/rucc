@@ -38,6 +38,8 @@ impl<'a> Parser<'a> {
             return Some(node);
         }
 
+        self.tokenizer.error_tok(self.tokenizer.cur_token(), "expected an expression");
+        
         None
     }
 
