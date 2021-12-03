@@ -3,18 +3,18 @@ use std::rc::Rc;
 
 #[derive(Debug, PartialEq)]
 pub enum TokenKind {
-    Empty,
-    Int,
-    Punct,
-    Eof,
+    Ident,  // Identifiers
+    Num,    // Numeric literals
+    Punct,  // Punctuators
+    Eof,    // End-of-file markers
 }
 
 #[derive(Debug, PartialEq)]
 pub struct Token<'a> {
-    pub kind:   TokenKind,
-    loc:        usize,
-    pub val:    Option<u32>,
-    literal:    Rc<&'a str>,
+    pub kind:       TokenKind,
+    loc:            usize,
+    pub val:        Option<u32>,
+    pub literal:    Rc<&'a str>,
 }
 
 impl<'a> Token<'a> {
@@ -29,7 +29,7 @@ impl<'a> Token<'a> {
 
     pub fn new_num(val: u32, loc: usize, s: Rc<&'a str>) -> Self {
         Token {
-            kind:       TokenKind::Int,
+            kind:       TokenKind::Num,
             loc:        loc,
             val:        Some(val),
             literal:    s.clone(),
@@ -66,13 +66,24 @@ impl<'a> Tokenizer<'a> {
     pub fn tokenize(&mut self) {
         self.read_char();
         while self.ch != '\0' {
+            // Skip whitespace characters.
             if self.ch.is_whitespace() {
                 self.read_char();
                 continue;
             }
 
+            // Numeric literal
             if self.ch.is_digit(10) {
                 self.read_num();
+                continue;
+            }
+
+            // Identifiers
+            if self.ch.is_ascii_lowercase() {
+                self.tokens.push(Token::new(
+                    TokenKind::Ident, self.pos, Rc::new(&self.input[self.pos..self.pos+1]
+                )));
+                self.read_char();
                 continue;
             }
 

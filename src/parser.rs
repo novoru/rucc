@@ -12,8 +12,10 @@ pub enum Node {
     Ne          { lhs: Box<Node>, rhs: Box<Node> }, // !=
     Lt          { lhs: Box<Node>, rhs: Box<Node> }, // <
     Le          { lhs: Box<Node>, rhs: Box<Node> }, // <=
+    Assign      { lhs: Box<Node>, rhs: Box<Node> }, // =
     ExprStmt    ( Box<Node> ),                      // Expression statement
-    Program     ( Vec<Box<Node>>),                  // Program
+    Var         ( char ),                           // Variable
+    Program     ( Vec<Box<Node>> ),                 // Program
     Num         ( u32 ),                            // Integer
 }
 
@@ -32,6 +34,22 @@ impl<'a> Parser<'a> {
     // stmt = expr-stmt
     fn stmt(&mut self) -> Option<Node> {
         self.expr_stmt()
+    }
+
+    // expr = assign
+    fn expr(&mut self) -> Option<Node> {
+        self.assign()
+    }
+
+    // assign = equality ("=" assign)?
+    fn assign(&mut self) -> Option<Node> {
+        let mut node = self.equality().unwrap();
+
+        if self.tokenizer.consume("=") {
+            node = Node::Assign { lhs: Box::new(node), rhs: Box::new(self.assign().unwrap()) };
+        }
+
+        Some(node)
     }
 
     // expr-stmt = expr ";"
@@ -109,19 +127,22 @@ impl<'a> Parser<'a> {
         }
     }
 
-    // primary = "(" expr ")" | num
+    // primary = "(" expr ")" | ident | num
     fn primary(&mut self) -> Option<Node> {
         if self.tokenizer.consume("(") {
             let node = self.expr().unwrap();
-            if !self.tokenizer.consume(")") {
-                panic!("expected ')'");
-            }
+            self.tokenizer.skip(")");
             return Some(node);
         }
 
         let token = self.tokenizer.next_token().unwrap();
 
-        if token.kind == TokenKind::Int {
+        if token.kind == TokenKind::Ident {
+            let node = Node::Var(token.literal.chars().next().unwrap());
+            return Some(node);
+        }
+
+        if token.kind == TokenKind::Num {
             let node = Node::Num(token.val.unwrap());
             return Some(node);
         }
@@ -163,12 +184,7 @@ impl<'a> Parser<'a> {
 
         self.primary()
     }
-
-    // expr = equality
-    fn expr(&mut self) -> Option<Node> {
-        self.equality()
-    }
-
+ 
     // program = stmt*
     pub fn parse(&mut self) -> Option<Node> {
         let mut prog = Node::Program(Vec::new());
