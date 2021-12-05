@@ -111,8 +111,13 @@ impl Parser {
         Some(node)
     }
 
-    // expr-stmt = expr ";"
+    // expr-stmt = expr? ";"
     fn expr_stmt(&mut self) -> Option<Node> {
+        if self.tokenizer.cur_token().equal(";") {
+            self.tokenizer.next_token();
+            return Some(Node::Block(Vec::new()));
+        }
+
         let node = Node::ExprStmt(Box::new(self.expr().unwrap()));
         self.tokenizer.skip(";");
 
