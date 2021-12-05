@@ -1,15 +1,18 @@
+use std::rc::Rc;
+use std::cell::RefCell;
 use crate::util::error;
-use crate::parser::Node;
+use crate::parser::{ Node, Scope };
 
 pub struct CodeGenerator {
-    depth:  u32,
+    scope:  Rc<RefCell<Scope>>,
     count:  u32,
 }
 
 impl CodeGenerator {
-    pub fn new() -> Self {
+    pub fn new(scope: Rc<RefCell<Scope>>) -> Self {
+
         CodeGenerator {
-            depth:  0,
+            scope:  Rc::clone(&scope),
             count:  1,
         }
     }
@@ -22,26 +25,22 @@ impl CodeGenerator {
 
     fn push(&mut self, ) {
         println!("  push %rax");
-        self.depth += 1;
     }
 
     fn pop(&mut self, arg: &str) {
         println!("  pop {}", arg);
-        self.depth -= 1;
     }
 
     // Compute the absolute address of a given node.
     // It's an error if a given node does not reside in memory.
-    fn gen_addr(&self, node: &Node) {
+    fn gen_addr(&mut self, node: &Node) {
         if let Node::Var(name) = node {
-            let c = name.chars().next().unwrap();
-            let mut buf = [0;4];
-            c.encode_utf8(&mut buf);
-            let mut a = [0;4];
-            'a'.encode_utf8(&mut a);
-            let offset = ((buf[0] - a[0] + 1) * 8) as i32;
-            println!("  lea {}(%rbp), %rax", -offset);
-            return;
+            for obj in &self.scope.borrow_mut().objs {
+                if obj.0 == name {
+                    println!("  lea {}(%rbp), %rax", -obj.1.offset);
+                    return;
+                }
+            }
         }
 
         error("not an lvalue");
@@ -187,27 +186,39 @@ impl CodeGenerator {
             }
             _   => error(&format!("invalid statement: {:?}", node)),
         }
-
-        
     }
 
-    pub fn gen(&mut self, node: &Node) {
-        self.depth = 0;
+    fn gen_func(&mut self, func: &Node) {
+        match func {
+            Node::Function { body, locals }  =>  {
+                println!("  sub ${}, %rsp", locals.borrow().stack_size);
+                for stmt in body {
+                    self.gen_stmt(&stmt);
+                }
+            },
+            _   =>  error(&format!("not function: {:?}", &func)),
+        }
+    }
 
+    fn gen_prog(&mut self, prog: &mut Node) {
+        match prog {
+            Node::Program(ref mut funcs) =>  {
+                let func = &funcs[0];
+                self.gen_func(func);
+            },
+            _   =>  error(&format!("not program: {:?}", prog)),
+        }
+    }
+
+    pub fn gen(&mut self, prog: &mut Node) {
         println!("  .global main");
         println!("main:");
 
         // Prologue
         println!("  push %rbp");
         println!("  mov %rsp, %rbp");
-        println!("  sub $208, %rsp");
 
-        if let Node::Program(ref stmts) = node {
-            for stmt in stmts {
-                self.gen_stmt(&stmt);
-                assert!(self.depth==0);
-            }
-        }
+        self.gen_prog(prog);
 
         println!(".L.return:");
         println!("  mov %rbp, %rsp");

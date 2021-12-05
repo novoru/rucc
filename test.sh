@@ -54,6 +54,7 @@ assert 8 '{ a=3; z=5; return a+z; }'
 assert 6 '{ a=b=3; return a+b; }'
 assert 3 '{ foo=3; return foo; }'
 assert 8 '{ foo123=3; bar=5; return foo123+bar; }'
+assert 8 '{ foo123=3; foo345=5; return foo123+foo345; }'
 
 assert 1 '{ return 1; 2; 3; }'
 assert 2 '{ 1; return 2; 3; }'

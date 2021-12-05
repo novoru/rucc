@@ -1,5 +1,6 @@
 use std::rc::Rc;
 use std::cell::RefCell;
+use std::collections::HashMap;
 use crate::tokenizer::{ TokenKind, Tokenizer };
 
 // Ast node type
@@ -31,30 +32,56 @@ pub enum Node {
     ExprStmt    ( Box<Node> ),                          // Expression statement
     Var         ( String ),                             // Variable
     FuncCall    { name: String, args: Vec<Box<Node>> }, // Function call
-    FuncDef     {                                       // Function definition
+    Function    {                                       // Function definition
                     body: Vec<Box<Node>>,
-                    locals: RefCell<Scope>,
-                    stack_size: usize
+                    locals: Rc<RefCell<Scope>>,
                 },
     Program     ( Vec<Box<Node>> ),                     // Program
     Num         ( u32 ),                                // Integer
 }
 
-#[derive(Debug, PartialEq)]
-struct Obj {
-    name:   String,
-    offset: usize,
+#[derive(Debug, Clone, PartialEq)]
+pub struct Obj {
+    pub offset: i32,
 }
 
 #[derive(Debug, PartialEq)]
 pub struct Scope {
-    parent: Option<Rc<Scope>>,
-    objs:   Vec<Obj>,
+    parent:     Option<Rc<RefCell<Scope>>>,
+    pub objs:   HashMap<String, Obj>,
+    pub stack_size: i32,
+}
+
+impl Scope {
+    fn align_to(&self, n: i32, align: i32) -> i32 {
+        (n + align - 1) / align * align
+    }
+
+    pub fn add_var(&mut self, name: &str) {
+        let mut offset = 8;
+        for obj in self.objs.iter() {
+            offset += obj.1.offset;
+        }
+        let obj = Obj { offset: offset };
+        self.objs.insert(name.to_string(), obj);
+        self.stack_size = self.align_to(offset, 16);
+    }
+
+    pub fn find_var(&mut self, name: &str) -> bool {
+        match self.objs.get(name) {
+            Some(_)     =>  true,
+            None        =>  false,
+        }
+    }
+
+    pub fn add_parent(&mut self, parent: &Rc<RefCell<Scope>>) {
+        self.parent = Some(Rc::clone(parent));
+    }
 }
 
 #[derive(Debug)]
 pub struct Parser {
-    global:     RefCell<Scope>,
+    pub scope:     Rc<RefCell<Scope>>,
     tokenizer:  Tokenizer,
 }
 
@@ -64,11 +91,15 @@ impl Parser {
         tokenizer.tokenize();
 
         Parser {
-            global:     RefCell::new( Scope {
-                parent: None, objs: Vec::new()
-            }),
+            scope: Rc::new(RefCell::new( Scope {
+                parent: None, objs: HashMap::new(), stack_size: 0,
+            })),
             tokenizer:  tokenizer,
         }
+    }
+
+    fn new_lvar(&mut self, name: &str) {
+        self.scope.borrow_mut().add_var(name);
     }
 
     // stmt = "return" expr ";"
@@ -308,7 +339,13 @@ impl Parser {
         let token = self.tokenizer.next_token().unwrap();
 
         if token.kind == TokenKind::Ident {
-            let node = Node::Var(token.literal.clone());
+            let name = token.literal;
+            let node = Node::Var(name.clone());
+
+            if !self.scope.borrow_mut().find_var(&name) {
+                self.new_lvar(&name);
+            }
+
             return Some(node);
         }
 
@@ -369,8 +406,16 @@ impl Parser {
 
         let mut body = Vec::new();
         body.push(Box::new(self.compound_stmt().unwrap()));
-        let prog = Node::Program(body);
+        
+        let mut prog = Vec::new();
 
-        Some(prog)
+        let func = Node::Function {
+            body:   body,
+            locals: Rc::clone(&self.scope),
+        };
+
+        prog.push(Box::new(func));
+
+        Some(Node::Program(prog))
     }
 }

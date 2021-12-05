@@ -13,7 +13,8 @@ fn main() {
     let input = &args[1];
 
     let mut parser = Parser::new(input);
-    let prog = parser.parse().unwrap();
-    let mut codegen = CodeGenerator::new();
-    codegen.gen(&prog);
+    let mut prog = parser.parse().unwrap();
+
+    let mut codegen = CodeGenerator::new(parser.scope);
+    codegen.gen(&mut prog);
 }
