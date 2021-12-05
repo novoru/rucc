@@ -150,6 +150,23 @@ impl CodeGenerator {
                 };
                 println!(".L.end.{}:", c);
             },
+            Node::For { init, cond, inc, body } =>  {
+                let c = self.count();
+
+                self.gen_stmt(init);
+                println!(".L.begin.{}:", c);
+                if let Some(expr) = cond {
+                    self.gen_expr(expr);
+                    println!("  cmp $0, %rax");
+                    println!("  je .L.end.{}", c);
+                }
+                self.gen_stmt(body);
+                if let Some(expr) = inc {
+                    self.gen_expr(expr);
+                }
+                println!("  jmp .L.begin.{}", c);
+                println!(".L.end.{}:", c);
+            },
             Node::Block (body)  =>  {
                 for stmt in body {
                     self.gen_stmt(stmt);

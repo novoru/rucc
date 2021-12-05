@@ -21,6 +21,12 @@ pub enum Node {
                     then:   Box<Node>,
                     els:    Option<Box<Node>>,
                 },
+    For         {                                       // "for"
+                    init:   Box<Node>,
+                    cond:   Option<Box<Node>>,
+                    inc:    Option<Box<Node>>,
+                    body:   Box<Node>,
+                },
     Block       ( Vec<Box<Node>> ),                     // { ... }
     ExprStmt    ( Box<Node> ),                          // Expression statement
     Var         ( String ),                             // Variable
@@ -67,6 +73,7 @@ impl Parser {
 
     // stmt = "return" expr ";"
     //      | "if" "(" expr ")" stmt ("else" stmt)?
+    //      | "for" "(" expr-stmt expr? ";" expr?  ")" stmt
     //      | "{" compound-stmt
     //      | expr-stmt
     fn stmt(&mut self) -> Option<Node> {
@@ -93,6 +100,33 @@ impl Parser {
             };
 
             return Some(Node::If { cond, then, els});
+        }
+
+        if self.tokenizer.cur_token().equal("for") {
+            self.tokenizer.next_token();
+            
+            self.tokenizer.skip("(");
+            let init = Box::new(self.expr_stmt().unwrap());
+
+            let cond = if !self.tokenizer.cur_token().equal(";") {
+                Some(Box::new(self.expr().unwrap()))
+            } else {
+                None
+            };
+
+            self.tokenizer.skip(";");
+
+            let inc = if !self.tokenizer.cur_token().equal(")") {
+                Some(Box::new(self.expr().unwrap()))
+            } else {
+                None
+            };
+
+            self.tokenizer.skip(")");
+
+            let body = Box::new(self.stmt().unwrap());
+
+            return Some(Node::For { init, cond, inc, body })
         }
 
         if self.tokenizer.cur_token().equal("{") {
