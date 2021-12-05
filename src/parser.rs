@@ -21,8 +21,8 @@ pub enum Node {
                     then:   Box<Node>,
                     els:    Option<Box<Node>>,
                 },
-    For         {                                       // "for"
-                    init:   Box<Node>,
+    For         {                                       // "for" of "while"
+                    init:   Option<Box<Node>>,
                     cond:   Option<Box<Node>>,
                     inc:    Option<Box<Node>>,
                     body:   Box<Node>,
@@ -74,6 +74,7 @@ impl Parser {
     // stmt = "return" expr ";"
     //      | "if" "(" expr ")" stmt ("else" stmt)?
     //      | "for" "(" expr-stmt expr? ";" expr?  ")" stmt
+    //      | "while" "(" expr ")" stmt
     //      | "{" compound-stmt
     //      | expr-stmt
     fn stmt(&mut self) -> Option<Node> {
@@ -106,7 +107,13 @@ impl Parser {
             self.tokenizer.next_token();
             
             self.tokenizer.skip("(");
-            let init = Box::new(self.expr_stmt().unwrap());
+
+            let init = if !self.tokenizer.cur_token().equal(";") {
+                Some(Box::new(self.expr_stmt().unwrap()))
+            } else {
+                self.tokenizer.skip(";");
+                None
+            };
 
             let cond = if !self.tokenizer.cur_token().equal(";") {
                 Some(Box::new(self.expr().unwrap()))
@@ -127,6 +134,23 @@ impl Parser {
             let body = Box::new(self.stmt().unwrap());
 
             return Some(Node::For { init, cond, inc, body })
+        }
+
+        if self.tokenizer.cur_token().equal("while") {
+            self.tokenizer.next_token();
+
+            self.tokenizer.skip("(");
+            let cond = if !self.tokenizer.cur_token().equal(")") {
+                Some(Box::new(self.expr().unwrap()))
+            } else {
+                None
+            };
+
+            self.tokenizer.skip(")");
+
+            let body = Box::new(self.stmt().unwrap());
+
+            return Some(Node::For { init: None, cond: cond, inc: None, body: body });
         }
 
         if self.tokenizer.cur_token().equal("{") {
