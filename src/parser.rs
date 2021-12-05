@@ -20,12 +20,15 @@ pub enum Node {
 }
 
 #[derive(Debug)]
-pub struct Parser<'a> {
-    tokenizer:  &'a mut Tokenizer<'a>,
+pub struct Parser {
+    tokenizer: Tokenizer,
 }
 
-impl<'a> Parser<'a> {
-    pub fn new(tokenizer: &'a mut Tokenizer<'a>) -> Self {
+impl Parser {
+    pub fn new(input: &str) -> Self {
+        let mut tokenizer = Tokenizer::new(input);
+        tokenizer.tokenize();
+
         Parser {
             tokenizer:  tokenizer,
         }
@@ -200,9 +203,7 @@ impl<'a> Parser<'a> {
 
 #[test]
 fn test_parser() {
-    let mut tokenizer = Tokenizer::new("12+42*(3-9);");
-    tokenizer.tokenize();
-    let mut parser = Parser::new(&mut tokenizer);
+    let mut parser = Parser::new("12+42*(3-9);");
     let prog = parser.parse().unwrap();
     let expected = Node::Program(vec![Box::new(
         Node::ExprStmt(Box::new(

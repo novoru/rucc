@@ -162,9 +162,7 @@ fn test_codegen() {
     use crate::tokenizer::Tokenizer;
     use crate::parser::Parser;
 
-    let mut tokenizer = Tokenizer::new("12+42*(3-9);");
-    tokenizer.tokenize();
-    let mut parser = Parser::new(&mut tokenizer);
+    let mut parser = Parser::new("12+42*(3-9);");
     let prog = parser.parse().unwrap();
     let mut codegen = CodeGenerator::new();
     codegen.gen(&prog);

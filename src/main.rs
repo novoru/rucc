@@ -13,9 +13,7 @@ fn main() {
 
     let input = &args[1];
 
-    let mut tokenizer = Tokenizer::new(input);
-    tokenizer.tokenize();
-    let mut parser = Parser::new(&mut tokenizer);
+    let mut parser = Parser::new(input);
     let prog = parser.parse().unwrap();
     let mut codegen = CodeGenerator::new();
     codegen.gen(&prog);

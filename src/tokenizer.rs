@@ -1,7 +1,6 @@
 use std::process;
-use std::rc::Rc;
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum TokenKind {
     Ident,  // Identifiers
     Num,    // Numeric literals
@@ -9,52 +8,52 @@ pub enum TokenKind {
     Eof,    // End-of-file markers
 }
 
-#[derive(Debug, PartialEq)]
-pub struct Token<'a> {
+#[derive(Debug, Clone, PartialEq)]
+pub struct Token {
     pub kind:       TokenKind,
     loc:            usize,
     pub val:        Option<u32>,
-    pub literal:    Rc<&'a str>,
+    pub literal:    String,
 }
 
-impl<'a> Token<'a> {
-    pub fn new(kind: TokenKind, loc: usize, s: Rc<&'a str>) -> Self {
+impl Token {
+    pub fn new(kind: TokenKind, loc: usize, s: &str) -> Self {
         Token {
             kind:       kind,
             loc:        loc,
             val:        None,
-            literal:    s.clone(),
+            literal:    s.to_string(),
         }
     }
 
-    pub fn new_num(val: u32, loc: usize, s: Rc<&'a str>) -> Self {
+    pub fn new_num(val: u32, loc: usize, s: &str) -> Self {
         Token {
             kind:       TokenKind::Num,
             loc:        loc,
             val:        Some(val),
-            literal:    s.clone(),
+            literal:    s.to_string(),
         }
     }
 
     pub fn equal(&self, op: &str) -> bool {
-        *self.literal == op
+        self.literal == op
     }
 }
 
 #[derive(Debug)]
-pub struct Tokenizer<'a> {
-    input:  &'a str,
+pub struct Tokenizer {
+    input:  String,
     pos:    usize,
     rpos:   usize,
     idx:    usize,
-    tokens: Vec<Token<'a>>,
+    tokens: Vec<Token>,
     ch:     char,
 }
 
-impl<'a> Tokenizer<'a> {
-    pub fn new(input: &'a str) -> Self {
+impl Tokenizer {
+    pub fn new(input: &str) -> Self {
         Self {
-            input:  input,
+            input:  input.to_string(),
             pos:    0,
             rpos:   0,
             idx:    0,
@@ -79,19 +78,26 @@ impl<'a> Tokenizer<'a> {
             }
 
             // Identifiers
-            if self.ch.is_ascii_lowercase() {
+            if self.is_ident1(self.ch) {
+                let start = self.pos;
+
+                loop {
+                    self.read_char();
+                    if !self.is_ident2(self.ch) {
+                        break;
+                    }
+                }
                 self.tokens.push(Token::new(
-                    TokenKind::Ident, self.pos, Rc::new(&self.input[self.pos..self.pos+1]
-                )));
-                self.read_char();
+                    TokenKind::Ident, start, &self.input[start..self.pos]
+                ));
                 continue;
             }
 
             let punct_len = self.read_punct(&self.input[self.pos..self.input.len()]);
             if punct_len != 0 {
                 self.tokens.push(Token::new(
-                    TokenKind::Punct, self.pos, Rc::new(&self.input[self.pos..self.pos+punct_len]
-                )));
+                    TokenKind::Punct, self.pos, &self.input[self.pos..self.pos+punct_len]
+                ));
                 for _ in 0..punct_len {
                     self.read_char();
                 }
@@ -101,17 +107,17 @@ impl<'a> Tokenizer<'a> {
             self.error_at(self.pos, "invalide token");
         }
         self.tokens.push(Token::new(
-            TokenKind::Eof, self.pos, Rc::new("")
+            TokenKind::Eof, self.pos, ""
         ));
     }
 
-    pub fn next_token(&mut self) -> Option<&Token> {
+    pub fn next_token(&mut self) -> Option<Token> {
         if self.idx >= self.tokens.len() {
             return None;
         }
         let token = &self.tokens[self.idx];
         self.idx += 1;
-        Some(token)
+        Some(token.clone())
     }
 
     pub fn skip(&mut self, s: &str) {
@@ -140,8 +146,18 @@ impl<'a> Tokenizer<'a> {
         }
         let literal = &self.input[start..self.pos];
         self.tokens.push(Token::new_num(
-            literal.parse::<u32>().unwrap(), start, Rc::new(literal)
+            literal.parse::<u32>().unwrap(), start, literal
         ));
+    }
+
+    // Returns true if c is valid as the first character of an identifier.
+    fn is_ident1(&self, c: char) -> bool {
+        matches!(c, 'A' ..= 'Z' | 'a' ..= 'z' | '_')
+    }
+
+    // Returns true if c is valid as a non-first character of an identifier.
+    fn is_ident2(&self, c: char) -> bool {
+        self.is_ident1(c) || matches!(c, '0' ..= '9')
     }
 
     fn read_punct(&self, s: &str) -> usize {
@@ -191,10 +207,10 @@ impl<'a> Tokenizer<'a> {
 fn test_tokenizer() {
     let mut tokenizer = Tokenizer::new(" 123 456\t789");
     tokenizer.tokenize();
-    assert_eq!(*tokenizer.next_token().unwrap(), Token::new_num(123, 1, Rc::new("123")));
-    assert_eq!(*tokenizer.next_token().unwrap(), Token::new_num(456, 5, Rc::new("456")));
-    assert_eq!(*tokenizer.next_token().unwrap(), Token::new_num(789, 9, Rc::new("789")));
-    assert_eq!(*tokenizer.next_token().unwrap(), Token::new(TokenKind::Eof, 12, Rc::new("")));
+    assert_eq!(tokenizer.next_token().unwrap(), Token::new_num(123, 1, "123"));
+    assert_eq!(tokenizer.next_token().unwrap(), Token::new_num(456, 5, "456"));
+    assert_eq!(tokenizer.next_token().unwrap(), Token::new_num(789, 9, "789"));
+    assert_eq!(tokenizer.next_token().unwrap(), Token::new(TokenKind::Eof, 12, ""));
     assert_eq!(tokenizer.next_token(), None);
 }
 
