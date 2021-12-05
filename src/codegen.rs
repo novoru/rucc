@@ -3,13 +3,21 @@ use crate::parser::Node;
 
 pub struct CodeGenerator {
     depth:  u32,
+    count:  u32,
 }
 
 impl CodeGenerator {
     pub fn new() -> Self {
         CodeGenerator {
             depth:  0,
+            count:  1,
         }
+    }
+
+    fn count(&mut self) -> u32 {
+        let c = self.count;
+        self.count += 1;
+        c
     }
 
     fn push(&mut self, ) {
@@ -128,20 +136,31 @@ impl CodeGenerator {
 
     fn gen_stmt(&mut self, node: &Node) {
         match node {
+            Node::If { cond, then, els }    =>  {
+                let c = self.count();
+
+                self.gen_expr(cond);
+                println!("  cmp $0, %rax");
+                println!("  je  .L.else.{}", c);
+                self.gen_stmt(then);
+                println!("  jmp .L.end.{}", c);
+                println!(".L.else.{}:", c);
+                if let Some(stmt) = els {
+                    self.gen_stmt(stmt);
+                };
+                println!(".L.end.{}:", c);
+            },
             Node::Block (body)  =>  {
                 for stmt in body {
                     self.gen_stmt(stmt);
                 }
-                return;
             },
             Node::Return (expr) =>  {
                 self.gen_expr(expr);
                 println!("  jmp .L.return");
-                return;
             },
             Node::ExprStmt(expr) => {
                 self.gen_expr(&expr);
-                return;
             }
             _   => error(&format!("invalid statement: {:?}", node)),
         }
