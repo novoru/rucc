@@ -80,7 +80,7 @@ impl Tokenizer {
                 continue;
             }
 
-            // Identifiers
+            // Identifiers or Keywords
             if self.is_ident1(self.ch) {
                 let start = self.pos;
 
