@@ -16,6 +16,7 @@ pub enum Node {
     Le          { lhs: Box<Node>, rhs: Box<Node> },     // <=
     Assign      { lhs: Box<Node>, rhs: Box<Node> },     // =
     Return      ( Box<Node> ),                          // "return"
+    Block       ( Vec<Box<Node>> ),                     // { ... }
     ExprStmt    ( Box<Node> ),                          // Expression statement
     Var         ( String ),                             // Variable
     FuncCall    { name: String, args: Vec<Box<Node>> }, // Function call
@@ -60,6 +61,7 @@ impl Parser {
     }
 
     // stmt = "return" expr ";"
+    //      | "{" compound-stmt
     //      | expr-stmt
     fn stmt(&mut self) -> Option<Node> {
         if self.tokenizer.cur_token().equal("return") {
@@ -69,7 +71,25 @@ impl Parser {
             return Some(node);
         }
 
+        if self.tokenizer.cur_token().equal("{") {
+            self.tokenizer.next_token();
+            return self.compound_stmt();
+        }
+
         self.expr_stmt()
+    }
+
+    // compound-stmt = stmt* "}"
+    fn compound_stmt(&mut self) -> Option<Node> {
+        let mut stmts = Vec::new();
+
+        while !self.tokenizer.cur_token().equal("}") {
+            stmts.push(Box::new(self.stmt().unwrap()));
+        }
+
+        self.tokenizer.next_token();
+
+        return Some(Node::Block(stmts))
     }
 
     // expr = assign
@@ -256,36 +276,14 @@ impl Parser {
         self.primary()
     }
  
-    // program = stmt*
+    // program = "{" compound-stmt
     pub fn parse(&mut self) -> Option<Node> {
-        let mut prog = Node::Program(Vec::new());
-        while self.tokenizer.cur_token().kind != TokenKind::Eof {
-            if let Node::Program(ref mut stmts) = prog {
-                stmts.push(Box::new(self.stmt().unwrap()));
-            }
-        }
+        self.tokenizer.skip("{");
+
+        let mut body = Vec::new();
+        body.push(Box::new(self.compound_stmt().unwrap()));
+        let mut prog = Node::Program(body);
 
         Some(prog)
     }
-}
-
-#[test]
-fn test_parser() {
-    let mut parser = Parser::new("12+42*(3-9);");
-    let prog = parser.parse().unwrap();
-    let expected = Node::Program(vec![Box::new(
-        Node::ExprStmt(Box::new(
-            Node::Add {
-                lhs: Box::new(Node::Num(12)),
-                rhs: Box::new(Node::Mul {
-                    lhs: Box::new(Node::Num(42)),
-                    rhs: Box::new(Node::Sub {
-                        lhs: Box::new(Node::Num(3)),
-                        rhs: Box::new(Node::Num(9)),
-                    })
-                }),
-            }
-        ))
-    )]);
-    assert_eq!(prog, expected);
 }

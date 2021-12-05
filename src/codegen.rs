@@ -128,6 +128,12 @@ impl CodeGenerator {
 
     fn gen_stmt(&mut self, node: &Node) {
         match node {
+            Node::Block (body)  =>  {
+                for stmt in body {
+                    self.gen_stmt(stmt);
+                }
+                return;
+            },
             Node::Return (expr) =>  {
                 self.gen_expr(expr);
                 println!("  jmp .L.return");
@@ -166,15 +172,4 @@ impl CodeGenerator {
         println!("  pop %rbp");
         println!("  ret");
     }
-}
-
-#[test]
-fn test_codegen() {
-    use crate::tokenizer::Tokenizer;
-    use crate::parser::Parser;
-
-    let mut parser = Parser::new("12+42*(3-9);");
-    let prog = parser.parse().unwrap();
-    let mut codegen = CodeGenerator::new();
-    codegen.gen(&prog);
 }
