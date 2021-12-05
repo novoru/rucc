@@ -112,23 +112,19 @@ impl Parser {
     //      | "{" compound-stmt
     //      | expr-stmt
     fn stmt(&mut self) -> Option<Node> {
-        if self.tokenizer.cur_token().equal("return") {
-            self.tokenizer.next_token();
+        if self.tokenizer.consume("return") {
             let node = Node::Return(Box::new(self.expr().unwrap()));
             self.tokenizer.skip(";");
             return Some(node);
         }
 
-        if self.tokenizer.cur_token().equal("if") {
-            self.tokenizer.next_token();
-            
+        if self.tokenizer.consume("if") {
             self.tokenizer.skip("(");
             let cond = Box::new(self.expr().unwrap());
             self.tokenizer.skip(")");
             let then = Box::new(self.stmt().unwrap());
             
-            let els = if self.tokenizer.cur_token().equal("else") {
-                self.tokenizer.next_token();
+            let els = if self.tokenizer.consume("else") {
                 Some(Box::new(self.stmt().unwrap()))
             } else {
                 None
@@ -137,9 +133,7 @@ impl Parser {
             return Some(Node::If { cond, then, els});
         }
 
-        if self.tokenizer.cur_token().equal("for") {
-            self.tokenizer.next_token();
-            
+        if self.tokenizer.consume("for") {
             self.tokenizer.skip("(");
 
             let init = if !self.tokenizer.cur_token().equal(";") {
@@ -170,9 +164,7 @@ impl Parser {
             return Some(Node::For { init, cond, inc, body })
         }
 
-        if self.tokenizer.cur_token().equal("while") {
-            self.tokenizer.next_token();
-
+        if self.tokenizer.consume("while") {
             self.tokenizer.skip("(");
             let cond = if !self.tokenizer.cur_token().equal(")") {
                 Some(Box::new(self.expr().unwrap()))
@@ -187,8 +179,7 @@ impl Parser {
             return Some(Node::For { init: None, cond: cond, inc: None, body: body });
         }
 
-        if self.tokenizer.cur_token().equal("{") {
-            self.tokenizer.next_token();
+        if self.tokenizer.consume("{") {
             return self.compound_stmt();
         }
 
@@ -229,8 +220,7 @@ impl Parser {
 
     // expr-stmt = expr? ";"
     fn expr_stmt(&mut self) -> Option<Node> {
-        if self.tokenizer.cur_token().equal(";") {
-            self.tokenizer.next_token();
+        if self.tokenizer.consume(";") {
             return Some(Node::Block(Vec::new()));
         }
 
