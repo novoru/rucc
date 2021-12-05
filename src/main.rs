@@ -1,5 +1,4 @@
 use std::{env, process};
-use rucc::tokenizer::Tokenizer;
 use rucc::parser::Parser;
 use rucc::codegen::CodeGenerator;
 

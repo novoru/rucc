@@ -369,7 +369,7 @@ impl Parser {
 
         let mut body = Vec::new();
         body.push(Box::new(self.compound_stmt().unwrap()));
-        let mut prog = Node::Program(body);
+        let prog = Node::Program(body);
 
         Some(prog)
     }

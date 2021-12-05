@@ -1,11 +1,14 @@
 use std::process;
 
+static KWDS: &'static [&str] = &["return", "if", "for", "while"];
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum TokenKind {
-    Ident,  // Identifiers
-    Num,    // Numeric literals
-    Punct,  // Punctuators
-    Eof,    // End-of-file markers
+    Ident,      // Identifiers
+    Keyword,    // Keywords
+    Num,        // Numeric literals
+    Punct,      // Punctuators
+    Eof,        // End-of-file markers
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -87,9 +90,17 @@ impl Tokenizer {
                         break;
                     }
                 }
-                self.tokens.push(Token::new(
-                    TokenKind::Ident, start, &self.input[start..self.pos]
-                ));
+
+                if self.is_keywords(&self.input[start..self.pos]) {
+                    self.tokens.push(Token::new(
+                        TokenKind::Keyword, start, &self.input[start..self.pos]
+                    ));
+                } else {
+                    self.tokens.push(Token::new(
+                        TokenKind::Ident, start, &self.input[start..self.pos]
+                    ));
+                }
+
                 continue;
             }
 
@@ -173,6 +184,15 @@ impl Tokenizer {
         }
     }
 
+    fn is_keywords(&self, s: &str) -> bool {
+        for kwd in KWDS.iter() {
+            if &s == kwd {
+                return true;
+            }
+        }
+        false
+    }
+
     pub fn consume(&mut self, op: &str) -> bool {
         if self.idx >= self.tokens.len() {  
             return false;
@@ -223,4 +243,28 @@ fn test_consume() {
     assert!(tokenizer.consume("+"));
     assert!(tokenizer.consume("2"));
     assert!(tokenizer.consume(")"));
+}
+
+#[test]
+fn test_tokenize_kwds() {
+    let mut tokenizer = Tokenizer::new("for for1");
+    tokenizer.tokenize();
+    assert_eq!(
+        tokenizer.next_token().unwrap(),
+        Token {
+            kind:       TokenKind::Keyword,
+            loc:        0,
+            val:        None,
+            literal:    "for".to_string(),
+        }
+    );
+    assert_eq!(
+        tokenizer.next_token().unwrap(),
+        Token {
+            kind:       TokenKind::Ident,
+            loc:        4,
+            val:        None,
+            literal:    "for1".to_string(),
+        }
+    );
 }
