@@ -26,8 +26,9 @@ impl CodeGenerator {
     // It's an error if a given node does not reside in memory.
     fn gen_addr(&self, node: &Node) {
         if let Node::Var(name) = node {
+            let c = name.chars().next().unwrap();
             let mut buf = [0;4];
-            name.encode_utf8(&mut buf);
+            c.encode_utf8(&mut buf);
             let mut a = [0;4];
             'a'.encode_utf8(&mut a);
             let offset = ((buf[0] - a[0] + 1) * 8) as i32;
@@ -126,11 +127,20 @@ impl CodeGenerator {
     }
 
     fn gen_stmt(&mut self, node: &Node) {
-        if let Node::ExprStmt(expr) = node {
-            self.gen_expr(&expr);
-            return;
+        match node {
+            Node::Return (expr) =>  {
+                self.gen_expr(expr);
+                println!("  jmp .L.return");
+                return;
+            },
+            Node::ExprStmt(expr) => {
+                self.gen_expr(&expr);
+                return;
+            }
+            _   => error(&format!("invalid statement: {:?}", node)),
         }
-        error("invalid statement");
+
+        
     }
 
     pub fn gen(&mut self, node: &Node) {
@@ -151,6 +161,7 @@ impl CodeGenerator {
             }
         }
 
+        println!(".L.return:");
         println!("  mov %rbp, %rsp");
         println!("  pop %rbp");
         println!("  ret");
