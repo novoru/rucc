@@ -16,6 +16,8 @@ pub enum Node {
     Lt          { lhs: Box<Node>, rhs: Box<Node> },     // <
     Le          { lhs: Box<Node>, rhs: Box<Node> },     // <=
     Assign      { lhs: Box<Node>, rhs: Box<Node> },     // =
+    Addr        ( Box<Node> ),                          // unary &
+    Deref       ( Box<Node> ),                          // unary *
     Return      ( Box<Node> ),                          // "return"
     If          {                                       // "if"
                     cond:   Box<Node>,
@@ -59,10 +61,11 @@ impl Scope {
 
     pub fn add_var(&mut self, name: &str) {
         let mut offset = 8;
-        for obj in self.objs.iter() {
-            offset += obj.1.offset;
+        for (_, obj) in self.objs.iter_mut() {
+            obj.offset += 8;
+            offset += 8;
         }
-        let obj = Obj { offset: offset };
+        let obj = Obj { offset: 8 };
         self.objs.insert(name.to_string(), obj);
         self.stack_size = self.align_to(offset, 16);
     }
@@ -386,7 +389,7 @@ impl Parser {
         }
     }
 
-    // unary = ("+" | "-") unary
+    // unary = ("+" | "-" | "*" | "&") unary
     //       | primary
     fn unary(&mut self) -> Option<Node> {
         if self.tokenizer.consume("+") {
@@ -395,6 +398,14 @@ impl Parser {
 
         if self.tokenizer.consume("-") {
             return Some(Node::Neg(Box::new(self.unary().unwrap())));
+        }
+
+        if self.tokenizer.consume("&") {
+            return Some(Node::Addr(Box::new(self.unary().unwrap())));
+        }
+        
+        if self.tokenizer.consume("*") {
+            return Some(Node::Deref(Box::new(self.unary().unwrap())));
         }
 
         self.primary()

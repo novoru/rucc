@@ -34,16 +34,20 @@ impl CodeGenerator {
     // Compute the absolute address of a given node.
     // It's an error if a given node does not reside in memory.
     fn gen_addr(&mut self, node: &Node) {
-        if let Node::Var(name) = node {
-            for obj in &self.scope.borrow_mut().objs {
-                if obj.0 == name {
-                    println!("  lea {}(%rbp), %rax", -obj.1.offset);
-                    return;
+        match node {
+            Node::Var(name)     =>  {
+                for obj in &self.scope.borrow_mut().objs {
+                    if obj.0 == name {
+                        println!("  lea {}(%rbp), %rax", -obj.1.offset);
+                        return;
+                    }
                 }
-            }
+            },
+            Node::Deref(expr)   =>  {
+                self.gen_expr(expr);
+            },
+            _   =>  error("not an lvalue"),
         }
-
-        error("not an lvalue");
     }
 
     fn gen_expr(&mut self, node: &Node) {
@@ -117,6 +121,13 @@ impl CodeGenerator {
                 println!("  cmp %rdi, %rax");
                 println!("  setle %al");
                 println!("  movzb %al, %rax");
+            },
+            Node::Deref (expr)  =>  {
+                self.gen_expr(expr);
+                println!("  mov (%rax), %rax");
+            },
+            Node::Addr (expr)   =>  {
+                self.gen_addr(expr);
             },
             Node::Assign { lhs, rhs }   =>  {
                 self.gen_addr(lhs);
