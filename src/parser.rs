@@ -61,7 +61,7 @@ impl Scope {
 
     pub fn add_var(&mut self, name: &str) {
         let mut offset = 8;
-        for (_, obj) in self.objs.iter_mut() {
+        for obj in self.objs.values_mut() {
             obj.offset += 8;
             offset += 8;
         }
@@ -71,10 +71,7 @@ impl Scope {
     }
 
     pub fn find_var(&mut self, name: &str) -> bool {
-        match self.objs.get(name) {
-            Some(_)     =>  true,
-            None        =>  false,
-        }
+        self.objs.contains_key(name)
     }
 
     pub fn add_parent(&mut self, parent: &Rc<RefCell<Scope>>) {
