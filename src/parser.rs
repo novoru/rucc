@@ -2,6 +2,7 @@ use std::rc::Rc;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use crate::tokenizer::{ TokenKind, Tokenizer };
+use crate::ty::Type;
 
 // Ast node type
 #[derive(Debug, PartialEq)]
@@ -40,6 +41,51 @@ pub enum Node {
                 },
     Program     ( Vec<Box<Node>> ),                     // Program
     Num         ( u32 ),                                // Integer
+}
+
+impl Node {
+    pub fn get_type(&mut self) -> Type {
+        match self {
+            Node::Add { lhs, .. }   =>  lhs.get_type(),
+            Node::Sub { lhs, rhs }  =>  {
+                // ptr - ptr, which returns how many elements are between the two.
+                if lhs.get_type().is_ptr() && rhs.get_type().is_ptr() {
+                    Type::Int
+                } else {
+                    lhs.get_type()
+                }
+            },
+            Node::Mul { lhs, .. }   |
+            Node::Div { lhs, .. }   =>  {
+                lhs.get_type()
+            },
+            Node::Neg (expr)    =>  {
+                expr.get_type()
+            },
+            Node::Eq { .. }    |
+            Node::Ne { .. }    |
+            Node::Lt { .. }    |
+            Node::Le { .. }    =>  {
+                Type::Int
+            },
+            Node::Assign { lhs, .. }    =>  {
+                lhs.get_type()
+            },
+            Node::Addr (expr)   =>  {
+                Type::Ptr(Box::new(expr.get_type()))
+            },
+            Node::Deref (expr)  =>  {
+                if let Type::Ptr(base) = expr.get_type() {
+                    *base
+                } else {
+                    Type::Int
+                }
+            },
+            Node::Var (..)  |
+            Node::Num (..)  =>  Type::Int,
+            _   =>  panic!("not an expression: {:?}", &self),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -127,7 +173,7 @@ impl Parser {
                 None
             };
 
-            return Some(Node::If { cond, then, els});
+            return Some(Node::If { cond, then, els });
         }
 
         if self.tokenizer.consume("for") {
@@ -208,7 +254,7 @@ impl Parser {
         if self.tokenizer.consume("=") {
             node = Node::Assign {
                 lhs: Box::new(node),
-                rhs: Box::new(self.assign().unwrap())
+                rhs: Box::new(self.assign().unwrap()),
             };
         }
 
@@ -235,7 +281,7 @@ impl Parser {
             if self.tokenizer.consume("==") {
                 node = Node::Eq {
                     lhs: Box::new(node),
-                    rhs: Box::new(self.relational().unwrap())
+                    rhs: Box::new(self.relational().unwrap()),
                 };
                 continue;
             }
@@ -243,7 +289,7 @@ impl Parser {
             if self.tokenizer.consume("!=") {
                 node = Node::Ne {
                     lhs: Box::new(node),
-                    rhs: Box::new(self.relational().unwrap())
+                    rhs: Box::new(self.relational().unwrap()),
                 };
                 continue;
             }
@@ -260,7 +306,7 @@ impl Parser {
             if self.tokenizer.consume("<") {
                 node = Node::Lt {
                     lhs: Box::new(node),
-                    rhs: Box::new(self.add().unwrap())
+                    rhs: Box::new(self.add().unwrap()),
                 };
                 continue;
             }
@@ -268,7 +314,7 @@ impl Parser {
             if self.tokenizer.consume("<=") {
                 node = Node::Le {
                     lhs: Box::new(node),
-                    rhs: Box::new(self.add().unwrap())
+                    rhs: Box::new(self.add().unwrap()),
                 };
                 continue;
             }
@@ -276,7 +322,7 @@ impl Parser {
             if self.tokenizer.consume(">") {
                 node = Node::Lt {
                     lhs: Box::new(self.add().unwrap()),
-                    rhs: Box::new(node)
+                    rhs: Box::new(node),
                 };
                 continue;
             }
@@ -284,7 +330,7 @@ impl Parser {
             if self.tokenizer.consume(">=") {
                 node = Node::Le {
                     lhs: Box::new(self.add().unwrap()),
-                    rhs: Box::new(node)
+                    rhs: Box::new(node),
                 };
                 continue;
             }
@@ -293,25 +339,100 @@ impl Parser {
         }
     }
 
+    // In C, `+` operator is overloaded to perform the pointer arithmetic.
+    // If p is a pointer, p+n adds not n but sizeof(*p)*n to the value of p,
+    // so that p+n points to the location n elements (not bytes) ahead of p.
+    // In other words, we need to scale an integer value before adding to a
+    // pointer value. This function takes care of the scaling.
     // add = mul ("+" mul | "-" mul)*
     fn add(&mut self) -> Option<Node> {
         let mut node = self.mul().unwrap();
 
         loop {
             if self.tokenizer.consume("+") {
+                let mut rhs = self.mul().unwrap();
+
+                // num + num
+                if node.get_type().is_integer() && rhs.get_type().is_integer() {
+                    node = Node::Add {
+                        lhs: Box::new(node),
+                        rhs: Box::new(rhs),
+                    };
+
+                    continue;
+                }
+
+                if node.get_type().is_ptr() && rhs.get_type().is_ptr() {
+                    self.tokenizer.error_tok(
+                        self.tokenizer.cur_token(),
+                        "invalid operands"
+                    );
+                }
+
+                // Canonicalize `num + ptr` to `ptr + num`.
+                if !node.get_type().is_ptr() && rhs.get_type().is_ptr() {
+                    let mut tmp = node;
+                    node = rhs;
+                    rhs = tmp;
+                }
+
+                rhs = Node::Mul {
+                    lhs: Box::new(rhs),
+                    rhs: Box::new(Node::Num(8)),
+                };
                 node = Node::Add {
                     lhs: Box::new(node),
-                    rhs: Box::new(self.mul().unwrap())
+                    rhs: Box::new(rhs),
                 };
+
                 continue;
             }
             
             if self.tokenizer.consume("-") {
-                node = Node::Sub {
-                    lhs: Box::new(node),
-                    rhs: Box::new(self.mul().unwrap())
-                };
-                continue;
+                let mut rhs = self.mul().unwrap();
+
+                // num - num
+                if node.get_type().is_integer() && rhs.get_type().is_integer() {
+                    node = Node::Sub {
+                        lhs: Box::new(node),
+                        rhs: Box::new(rhs),
+                    };
+
+                    continue;
+                }
+
+                // ptr - num
+                if node.get_type().is_ptr() && rhs.get_type().is_integer() {
+                    rhs = Node::Mul {
+                        lhs: Box::new(rhs),
+                        rhs: Box::new(Node::Num(8)),
+                    };
+                    node = Node::Sub {
+                        lhs: Box::new(node),
+                        rhs: Box::new(rhs),
+                    };
+
+                    continue;
+                }
+
+                // ptr - ptr, which returns how many elements are between the two.
+                if node.get_type().is_ptr() && rhs.get_type().is_ptr() {
+                    node = Node::Sub {
+                        lhs: Box::new(node),
+                        rhs: Box::new(rhs),
+                    };
+                    node = Node::Div {
+                        lhs: Box::new(node),
+                        rhs: Box::new(Node::Num(8)),
+                    };
+
+                    continue;
+                }
+
+                self.tokenizer.error_tok(
+                    self.tokenizer.cur_token(),
+                    "invalid operands"
+                );
             }
 
             return Some(node);
@@ -360,14 +481,15 @@ impl Parser {
             if self.tokenizer.consume("*") {
                 node = Node::Mul {
                     lhs: Box::new(node),
-                    rhs: Box::new(self.unary().unwrap())
+                    rhs: Box::new(self.unary().unwrap()),
                 };
                 continue;
             }
             
             if self.tokenizer.consume("/") {
                 node = Node::Div {
-                    lhs: Box::new(node), rhs: Box::new(self.unary().unwrap())
+                    lhs: Box::new(node),
+                    rhs: Box::new(self.unary().unwrap()),
                 };
                 continue;
             }

@@ -35,7 +35,7 @@ impl CodeGenerator {
     // It's an error if a given node does not reside in memory.
     fn gen_addr(&mut self, node: &Node) {
         match node {
-            Node::Var(name)     =>  {
+            Node::Var (name)  =>  {
                 for obj in &self.scope.borrow_mut().objs {
                     if obj.0 == name {
                         println!("  lea {}(%rbp), %rax", -obj.1.offset);
@@ -43,7 +43,7 @@ impl CodeGenerator {
                     }
                 }
             },
-            Node::Deref(expr)   =>  {
+            Node::Deref (expr)   =>  {
                 self.gen_expr(expr);
             },
             _   =>  error("not an lvalue"),
@@ -52,7 +52,7 @@ impl CodeGenerator {
 
     fn gen_expr(&mut self, node: &Node) {
         match node {
-            Node::Num (val) => println!("  mov ${}, %rax", val),
+            Node::Num (val)   => println!("  mov ${}, %rax", val),
             Node::Add { lhs, rhs }  =>  {
                 self.gen_expr(rhs);
                 self.push();
@@ -82,8 +82,8 @@ impl CodeGenerator {
                 println!("  cqo");
                 println!("  idiv %rdi");
             },
-            Node::Neg (node)    =>   {
-                self.gen_expr(node);
+            Node::Neg (expr)    =>   {
+                self.gen_expr(expr);
                 println!("  neg %rax");
             },
             Node::Eq { lhs, rhs }   =>  {
@@ -183,8 +183,8 @@ impl CodeGenerator {
                 println!("  jmp .L.begin.{}", c);
                 println!(".L.end.{}:", c);
             },
-            Node::Block (body)  =>  {
-                for stmt in body {
+            Node::Block (stmts)  =>  {
+                for stmt in stmts {
                     self.gen_stmt(stmt);
                 }
             },
@@ -192,7 +192,7 @@ impl CodeGenerator {
                 self.gen_expr(expr);
                 println!("  jmp .L.return");
             },
-            Node::ExprStmt(expr) => {
+            Node::ExprStmt (expr) => {
                 self.gen_expr(&expr);
             }
             _   => error(&format!("invalid statement: {:?}", node)),
@@ -213,7 +213,7 @@ impl CodeGenerator {
 
     fn gen_prog(&mut self, prog: &mut Node) {
         match prog {
-            Node::Program(ref mut funcs) =>  {
+            Node::Program (ref mut funcs ) =>  {
                 let func = &funcs[0];
                 self.gen_func(func);
             },
