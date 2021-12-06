@@ -56,21 +56,13 @@ impl Node {
                 }
             },
             Node::Mul { lhs, .. }   |
-            Node::Div { lhs, .. }   =>  {
-                lhs.get_type()
-            },
-            Node::Neg (expr)    =>  {
-                expr.get_type()
-            },
-            Node::Eq { .. }    |
-            Node::Ne { .. }    |
-            Node::Lt { .. }    |
-            Node::Le { .. }    =>  {
-                Type::Int
-            },
-            Node::Assign { lhs, .. }    =>  {
-                lhs.get_type()
-            },
+            Node::Div { lhs, .. }   =>  lhs.get_type(),
+            Node::Neg (expr)    =>  expr.get_type(),
+            Node::Eq { .. } |
+            Node::Ne { .. } |
+            Node::Lt { .. } |
+            Node::Le { .. } =>   Type::Int,
+            Node::Assign { lhs, .. }    =>  lhs.get_type(),
             Node::Addr (expr)   =>  {
                 Type::Ptr(Box::new(expr.get_type()))
             },
