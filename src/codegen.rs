@@ -35,7 +35,7 @@ impl CodeGenerator {
     // It's an error if a given node does not reside in memory.
     fn gen_addr(&mut self, node: &Node) {
         match node {
-            Node::Var (name)  =>  {
+            Node::Var { name, ty:_ }    =>  {
                 for obj in &self.scope.borrow_mut().objs {
                     if obj.0 == name {
                         println!("  lea {}(%rbp), %rax", -(obj.1.offset as i32));
@@ -136,7 +136,7 @@ impl CodeGenerator {
                 self.pop("%rdi");
                 println!("  mov %rax, (%rdi)");
             },
-            Node::Var (_)   =>  {
+            Node::Var {..}   =>  {
                 self.gen_addr(node);
                 println!("  mov (%rax), %rax");
             },

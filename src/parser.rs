@@ -33,7 +33,7 @@ pub enum Node {
                 },
     Block       ( Vec<Box<Node>> ),                     // { ... }
     ExprStmt    ( Box<Node> ),                          // Expression statement
-    Var         ( String ),                             // Variable
+    Var         { name: String, ty: Type },             // Variable
     FuncCall    { name: String, args: Vec<Box<Node>> }, // Function call
     Function    {                                       // Function definition
                     body: Vec<Box<Node>>,
@@ -73,8 +73,8 @@ impl Node {
                     panic!("invalid pointer dereference")
                 }
             },
-            Node::Var (..)  |
-            Node::Num (..)  =>  ty_int(),
+            Node::Var { name:_, ty }    =>  ty.clone(),
+            Node::Num (..)              =>  ty_int(),
             _   =>  panic!("not an expression: {:?}", &self),
         }
     }
@@ -83,7 +83,7 @@ impl Node {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Obj {
     pub offset: u32,
-    pub size:   u32,
+    pub ty:     Type,
 }
 
 #[derive(Debug, PartialEq)]
@@ -102,15 +102,15 @@ impl Scope {
         let mut offset = ty.get_size();
         for obj in self.objs.values_mut() {
             obj.offset += ty.get_size();
-            offset += obj.size;
+            offset += obj.ty.get_size();
         }
-        let obj = Obj { offset: 8, size: 8 };
+        let obj = Obj { offset: 8, ty: ty.clone() };
         self.objs.insert(name.to_string(), obj);
         self.stack_size = self.align_to(offset, 16);
     }
 
-    pub fn find_var(&mut self, name: &str) -> bool {
-        self.objs.contains_key(name)
+    pub fn find_var(&mut self, name: &str) -> Option<&Obj> {
+        self.objs.get(name)
     }
 
     pub fn add_parent(&mut self, parent: &Rc<RefCell<Scope>>) {
@@ -190,7 +190,7 @@ impl Parser {
                 continue;
             }
 
-            let lhs = Node::Var(name.clone());
+            let lhs = Node::Var{ name, ty };
             let rhs = self.assign().unwrap();
             let node = Node::Assign {
                 lhs: Box::new(lhs),
@@ -508,13 +508,14 @@ impl Parser {
 
         if token.kind == TokenKind::Ident {
             let name = token.literal.clone();
-            let node = Node::Var(name.clone());
-
-            if !self.scope.borrow_mut().find_var(&name) {
+            let ty = if let Some(obj) = self.scope.borrow_mut().find_var(&name) {
+                obj.ty.clone()
+            } else {
                 self.tokenizer.error_tok(&token, "undefined variable");
-            }
+                panic!()
+            };
 
-            return Some(node);
+            return Some(Node::Var{ name, ty: ty });
         }
 
         if token.kind == TokenKind::Num {
