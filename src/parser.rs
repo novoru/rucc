@@ -2,7 +2,7 @@ use std::rc::Rc;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use crate::tokenizer::{ TokenKind, Tokenizer };
-use crate::ty::Type;
+use crate::ty::*;
 
 // Ast node type
 #[derive(Debug, PartialEq)]
@@ -50,7 +50,7 @@ impl Node {
             Node::Sub { lhs, rhs }  =>  {
                 // ptr - ptr, which returns how many elements are between the two.
                 if lhs.get_type().is_ptr() && rhs.get_type().is_ptr() {
-                    Type::Int
+                    ty_int()
                 } else {
                     lhs.get_type()
                 }
@@ -61,20 +61,20 @@ impl Node {
             Node::Eq { .. } |
             Node::Ne { .. } |
             Node::Lt { .. } |
-            Node::Le { .. } =>   Type::Int,
+            Node::Le { .. } =>   ty_int(),
             Node::Assign { lhs, .. }    =>  lhs.get_type(),
             Node::Addr (expr)   =>  {
-                Type::Ptr(Box::new(expr.get_type()))
+                Type::Ptr{ base: Box::new(expr.get_type()), size: 8 }
             },
             Node::Deref (expr)  =>  {
-                if let Type::Ptr(base) = expr.get_type() {
+                if let Type::Ptr{ base, size:_ } = expr.get_type() {
                     *base
                 } else {
-                    Type::Int
+                    ty_int()
                 }
             },
             Node::Var (..)  |
-            Node::Num (..)  =>  Type::Int,
+            Node::Num (..)  =>  ty_int(),
             _   =>  panic!("not an expression: {:?}", &self),
         }
     }
@@ -82,28 +82,29 @@ impl Node {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Obj {
-    pub offset: i32,
+    pub offset: u32,
+    pub size:   u32,
 }
 
 #[derive(Debug, PartialEq)]
 pub struct Scope {
     parent:     Option<Rc<RefCell<Scope>>>,
     pub objs:   HashMap<String, Obj>,
-    pub stack_size: i32,
+    pub stack_size: u32,
 }
 
 impl Scope {
-    fn align_to(&self, n: i32, align: i32) -> i32 {
+    fn align_to(&self, n: u32, align: u32) -> u32 {
         (n + align - 1) / align * align
     }
 
-    pub fn add_var(&mut self, name: &str) {
-        let mut offset = 8;
+    pub fn add_var(&mut self, name: &str, ty: &Type) {
+        let mut offset = ty.get_size();
         for obj in self.objs.values_mut() {
-            obj.offset += 8;
-            offset += 8;
+            obj.offset += ty.get_size();
+            offset += obj.size;
         }
-        let obj = Obj { offset: 8 };
+        let obj = Obj { offset: 8, size: 8 };
         self.objs.insert(name.to_string(), obj);
         self.stack_size = self.align_to(offset, 16);
     }
@@ -136,8 +137,8 @@ impl Parser {
         }
     }
 
-    fn new_lvar(&mut self, name: &str) {
-        self.scope.borrow_mut().add_var(name);
+    fn new_lvar(&mut self, name: &str, ty: &Type) {
+        self.scope.borrow_mut().add_var(name, ty);
     }
 
     // stmt = "return" expr ";"
@@ -171,10 +172,9 @@ impl Parser {
         if self.tokenizer.consume("for") {
             self.tokenizer.skip("(");
 
-            let init = if !self.tokenizer.cur_token().equal(";") {
+            let init = if !self.tokenizer.consume(";") {
                 Some(Box::new(self.expr_stmt().unwrap()))
             } else {
-                self.tokenizer.skip(";");
                 None
             };
 
@@ -225,11 +225,9 @@ impl Parser {
     fn compound_stmt(&mut self) -> Option<Node> {
         let mut stmts = Vec::new();
 
-        while !self.tokenizer.cur_token().equal("}") {
+        while !self.tokenizer.consume("}") {
             stmts.push(Box::new(self.stmt().unwrap()));
         }
-
-        self.tokenizer.next_token();
 
         return Some(Node::Block(stmts))
     }
@@ -363,7 +361,7 @@ impl Parser {
 
                 // Canonicalize `num + ptr` to `ptr + num`.
                 if !node.get_type().is_ptr() && rhs.get_type().is_ptr() {
-                    let mut tmp = node;
+                    let tmp = node;
                     node = rhs;
                     rhs = tmp;
                 }
@@ -446,7 +444,7 @@ impl Parser {
             let node = Node::Var(name.clone());
 
             if !self.scope.borrow_mut().find_var(&name) {
-                self.new_lvar(&name);
+                self.new_lvar(&name, &ty_int());
             }
 
             return Some(node);

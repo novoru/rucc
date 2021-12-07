@@ -38,7 +38,7 @@ impl CodeGenerator {
             Node::Var (name)  =>  {
                 for obj in &self.scope.borrow_mut().objs {
                     if obj.0 == name {
-                        println!("  lea {}(%rbp), %rax", -obj.1.offset);
+                        println!("  lea {}(%rbp), %rax", -(obj.1.offset as i32));
                         return;
                     }
                 }
