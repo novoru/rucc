@@ -131,6 +131,13 @@ impl Tokenizer {
         Some(token.clone())
     }
 
+    pub fn peek_token(&self, s: &str) -> bool {
+        if self.idx >= self.tokens.len() {
+            return false;
+        }
+        self.tokens[self.idx+1].equal(s)
+    } 
+
     pub fn skip(&mut self, s: &str) {
         let token = self.cur_token();
         if !token.equal(s) {

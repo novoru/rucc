@@ -3,6 +3,8 @@ use std::cell::RefCell;
 use crate::util::error;
 use crate::parser::{ Node, Scope };
 
+static ARGREG: &'static [&str] = &["%rdi", "%rsi", "%rdx", "%rcx", "%r8", "%r9"];
+
 pub struct CodeGenerator {
     scope:  Rc<RefCell<Scope>>,
     count:  u32,
@@ -140,7 +142,16 @@ impl CodeGenerator {
                 self.gen_addr(node);
                 println!("  mov (%rax), %rax");
             },
-            Node::FuncCall { name, args:_ } =>  {
+            Node::FuncCall { name, args } =>  {
+                for arg in args {
+                    self.gen_expr(arg);
+                    self.push();
+                }
+
+                for i in (0..args.len()).rev() {
+                    self.pop(ARGREG[i]);
+                }
+
                 println!("  mov $0, %rax");
                 println!("  call {}", name);
             },

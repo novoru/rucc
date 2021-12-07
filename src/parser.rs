@@ -497,6 +497,26 @@ impl Parser {
         }
     }
 
+    // funcall = ident "(" (assign ("," assign)*)? ")"
+    fn funcall(&mut self) -> Option<Node> {
+        let mut args = Vec::new();
+        let name = self.get_ident();
+
+        self.tokenizer.next_token();
+        self.tokenizer.next_token();
+
+        let mut i = 0;
+        while !self.tokenizer.consume(")") {
+            if i > 0 {
+                self.tokenizer.skip(",");
+            }
+            args.push(Box::new(self.assign().unwrap()));
+            i += 1;
+        }
+
+        Some(Node::FuncCall { name, args })
+    }
+
     // primary = "(" expr ")" | ident args? | num
     // args = "(" ")"
     fn primary(&mut self) -> Option<Node> {
@@ -506,20 +526,16 @@ impl Parser {
             return Some(node);
         }
 
-        let token = self.tokenizer.next_token().unwrap();
+        let token = self.tokenizer.cur_token().clone();
 
         if token.kind == TokenKind::Ident {
-            let name = token.literal.clone();
-
             // Function call
-            if self.tokenizer.consume("(") {
-                self.tokenizer.skip(")");
-
-                return Some(Node::FuncCall {
-                    name: name,
-                    args: Vec::new(),
-                });
+            if self.tokenizer.peek_token("(") {
+                return self.funcall();
             }
+
+            let name = token.literal.clone();
+            self.tokenizer.next_token().unwrap();
 
             // Variable
             let ty = if let Some(obj) = self.scope.borrow_mut().find_var(&name) {
@@ -531,6 +547,8 @@ impl Parser {
 
             return Some(Node::Var{ name, ty: ty });
         }
+
+        self.tokenizer.next_token().unwrap();
 
         if token.kind == TokenKind::Num {
             let node = Node::Num(token.val.unwrap());
