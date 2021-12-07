@@ -74,6 +74,7 @@ impl Node {
                 }
             },
             Node::Var { name:_, ty }    =>  ty.clone(),
+            Node::FuncCall { .. }       |
             Node::Num (..)              =>  ty_int(),
             _   =>  panic!("not an expression: {:?}", &self),
         }
@@ -496,7 +497,8 @@ impl Parser {
         }
     }
 
-    // primary = "(" expr ")" | ident | num
+    // primary = "(" expr ")" | ident args? | num
+    // args = "(" ")"
     fn primary(&mut self) -> Option<Node> {
         if self.tokenizer.consume("(") {
             let node = self.expr().unwrap();
@@ -508,6 +510,18 @@ impl Parser {
 
         if token.kind == TokenKind::Ident {
             let name = token.literal.clone();
+
+            // Function call
+            if self.tokenizer.consume("(") {
+                self.tokenizer.skip(")");
+
+                return Some(Node::FuncCall {
+                    name: name,
+                    args: Vec::new(),
+                });
+            }
+
+            // Variable
             let ty = if let Some(obj) = self.scope.borrow_mut().find_var(&name) {
                 obj.ty.clone()
             } else {

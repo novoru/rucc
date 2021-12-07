@@ -140,6 +140,10 @@ impl CodeGenerator {
                 self.gen_addr(node);
                 println!("  mov (%rax), %rax");
             },
+            Node::FuncCall { name, args:_ } =>  {
+                println!("  mov $0, %rax");
+                println!("  call {}", name);
+            },
             _   =>  error("invalid node"),
         }
     }
