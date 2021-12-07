@@ -1,6 +1,6 @@
 pub static TY_INT: &'static Type = &Type::Int { size: 8 };
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Type {
     Int { size: u32 },
     Ptr { base: Box<Type>, size: u32 },

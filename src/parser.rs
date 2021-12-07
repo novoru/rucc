@@ -70,7 +70,7 @@ impl Node {
                 if let Type::Ptr{ base, size:_ } = expr.get_type() {
                     *base
                 } else {
-                    ty_int()
+                    panic!("invalid pointer dereference")
                 }
             },
             Node::Var (..)  |
@@ -139,6 +139,69 @@ impl Parser {
 
     fn new_lvar(&mut self, name: &str, ty: &Type) {
         self.scope.borrow_mut().add_var(name, ty);
+    }
+
+    fn get_ident(&self) -> String {
+        let token = self.tokenizer.cur_token();
+        if token.kind != TokenKind::Ident {
+            self.tokenizer.error_tok(token, "expected an identifier");
+        }
+        token.literal.to_string()
+    }
+
+    // declspec = "int"
+    fn declspec(&mut self) -> Type {
+        self.tokenizer.skip("int");
+        ty_int()
+    }
+
+    // declarator = "*" ident
+    fn declarator(&mut self, ty: Type) -> Type {
+        let mut ty = ty.clone();
+        while self.tokenizer.consume("*") {
+            ty = Type::Ptr { base: Box::new(ty), size: 8 };
+        }
+         
+        let token = self.tokenizer.cur_token();
+        if token.kind != TokenKind::Ident {
+            self.tokenizer.error_tok(token, "expected a variable name");
+        }
+
+        ty
+    }
+
+    // declaration = declspec (declarator ("=" expr)? ("," declarator ("=" expr)?)*)? ";"
+    fn declaration(&mut self) -> Option<Node> {
+        let basety = self.declspec();
+        let mut decls = Vec::new();
+
+        let mut i = 0;
+
+        while !self.tokenizer.consume(";") {
+            if i > 0 {
+                self.tokenizer.skip(",");
+            }
+
+            let ty = self.declarator(basety.clone());
+            let name = self.get_ident();
+            self.new_lvar(&name, &ty);
+
+            if self.tokenizer.cur_token().equal("=") {
+                continue;
+            }
+
+            let lhs = Node::Var(name.clone());
+            let rhs = self.assign().unwrap();
+            let node = Node::Assign {
+                lhs: Box::new(lhs),
+                rhs: Box::new(rhs),
+            };
+            decls.push(Box::new(Node::ExprStmt(Box::new(node))));
+
+            i += 1;
+        }
+
+        Some(Node::Block(decls))
     }
 
     // stmt = "return" expr ";"
@@ -221,12 +284,16 @@ impl Parser {
         self.expr_stmt()
     }
 
-    // compound-stmt = stmt* "}"
+    // compound-stmt = (declaration | stmt)* "}"
     fn compound_stmt(&mut self) -> Option<Node> {
         let mut stmts = Vec::new();
 
         while !self.tokenizer.consume("}") {
-            stmts.push(Box::new(self.stmt().unwrap()));
+            if self.tokenizer.cur_token().equal("int") {
+                stmts.push(Box::new(self.declaration().unwrap()))
+            } else {
+                stmts.push(Box::new(self.stmt().unwrap()));
+            }
         }
 
         return Some(Node::Block(stmts))
@@ -440,11 +507,11 @@ impl Parser {
         let token = self.tokenizer.next_token().unwrap();
 
         if token.kind == TokenKind::Ident {
-            let name = token.literal;
+            let name = token.literal.clone();
             let node = Node::Var(name.clone());
 
             if !self.scope.borrow_mut().find_var(&name) {
-                self.new_lvar(&name, &ty_int());
+                self.tokenizer.error_tok(&token, "undefined variable");
             }
 
             return Some(node);

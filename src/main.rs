@@ -14,7 +14,7 @@ fn main() {
 
     let mut parser = Parser::new(input);
     let mut prog = parser.parse().unwrap();
-
+    dbg!(&prog);
     let mut codegen = CodeGenerator::new(parser.scope);
     codegen.gen(&mut prog);
 }
