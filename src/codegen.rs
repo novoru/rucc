@@ -1,21 +1,20 @@
 use std::rc::Rc;
-use std::cell::RefCell;
 use crate::util::error;
-use crate::parser::{ Node, Scope };
+use crate::parser::Node;
 
 static ARGREG: &'static [&str] = &["%rdi", "%rsi", "%rdx", "%rcx", "%r8", "%r9"];
 
 pub struct CodeGenerator {
-    scope:  Rc<RefCell<Scope>>,
-    count:  u32,
+    cur_func:   Option<Rc<Node>>,
+    count:      u32,
 }
 
 impl CodeGenerator {
-    pub fn new(scope: Rc<RefCell<Scope>>) -> Self {
+    pub fn new() -> Self {
 
         CodeGenerator {
-            scope:  Rc::clone(&scope),
-            count:  1,
+            cur_func:   None,
+            count:      1,
         }
     }
 
@@ -38,10 +37,14 @@ impl CodeGenerator {
     fn gen_addr(&mut self, node: &Node) {
         match node {
             Node::Var { name, ty:_ }    =>  {
-                for obj in &self.scope.borrow_mut().objs {
-                    if obj.0 == name {
-                        println!("  lea {}(%rbp), %rax", -(obj.1.offset as i32));
-                        return;
+                if let Some(func) = &self.cur_func {
+                    if let Node::Function { locals,..} = &**func {
+                        for obj in &locals.borrow().objs {
+                            if obj.0 == name {
+                                println!("  lea {}(%rbp), %rax", -(obj.1.offset as i32));
+                                return;
+                            }
+                        }
                     }
                 }
             },
@@ -205,7 +208,11 @@ impl CodeGenerator {
             },
             Node::Return (expr) =>  {
                 self.gen_expr(expr);
-                println!("  jmp .L.return");
+                if let Some(func) = &self.cur_func {
+                    if let Node::Function{ name, .. } = &**func {
+                        println!("  jmp .L.return.{}", name);
+                    }
+                }
             },
             Node::ExprStmt (expr) => {
                 self.gen_expr(&expr);
@@ -215,12 +222,28 @@ impl CodeGenerator {
     }
 
     fn gen_func(&mut self, func: &Node) {
+        self.cur_func = Some(Rc::new(func.clone()));
+        println!("  .global main");
         match func {
-            Node::Function { body, locals }  =>  {
+            Node::Function { name, body, locals, ret_ty:_ }  =>  {
+                println!("{}:", name);
+                
+                // Prologue
+                println!("  push %rbp");
+
+                println!("  mov %rsp, %rbp");
                 println!("  sub ${}, %rsp", locals.borrow().stack_size);
+                
+                // Emit code
                 for stmt in body {
                     self.gen_stmt(&stmt);
                 }
+                
+                // Epilogue
+                println!(".L.return.{}:", name);
+                println!("  mov %rbp, %rsp");
+                println!("  pop %rbp");
+                println!("  ret");
             },
             _   =>  error(&format!("not function: {:?}", &func)),
         }
@@ -229,26 +252,15 @@ impl CodeGenerator {
     fn gen_prog(&mut self, prog: &mut Node) {
         match prog {
             Node::Program (ref mut funcs ) =>  {
-                let func = &funcs[0];
-                self.gen_func(func);
+                for func in funcs {
+                    self.gen_func(func);
+                }
             },
             _   =>  error(&format!("not program: {:?}", prog)),
         }
     }
 
     pub fn gen(&mut self, prog: &mut Node) {
-        println!("  .global main");
-        println!("main:");
-
-        // Prologue
-        println!("  push %rbp");
-        println!("  mov %rsp, %rbp");
-
         self.gen_prog(prog);
-
-        println!(".L.return:");
-        println!("  mov %rbp, %rsp");
-        println!("  pop %rbp");
-        println!("  ret");
     }
 }

@@ -215,7 +215,13 @@ impl Tokenizer {
     }
 
     pub fn cur_token(&self) -> &Token {
-        &self.tokens[self.idx]
+        let idx = if self.idx >= self.tokens.len() {
+            self.tokens.len()-1
+        } else {
+            self.idx
+        };
+
+        &self.tokens[idx]
     }
 
     fn error_at(&self, loc: usize, s: &str) {

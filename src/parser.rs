@@ -5,7 +5,7 @@ use crate::tokenizer::{ TokenKind, Tokenizer };
 use crate::ty::*;
 
 // Ast node type
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Node {
     Add         { lhs: Box<Node>, rhs: Box<Node> },     // +
     Sub         { lhs: Box<Node>, rhs: Box<Node> },     // -
@@ -36,8 +36,10 @@ pub enum Node {
     Var         { name: String, ty: Type },             // Variable
     FuncCall    { name: String, args: Vec<Box<Node>> }, // Function call
     Function    {                                       // Function definition
-                    body: Vec<Box<Node>>,
+                    name:   String,
+                    body:   Vec<Box<Node>>,
                     locals: Rc<RefCell<Scope>>,
+                    ret_ty: Option<Type>,
                 },
     Program     ( Vec<Box<Node>> ),                     // Program
     Num         ( u32 ),                                // Integer
@@ -50,7 +52,7 @@ impl Node {
             Node::Sub { lhs, rhs }  =>  {
                 // ptr - ptr, which returns how many elements are between the two.
                 if lhs.get_type().is_ptr() && rhs.get_type().is_ptr() {
-                    ty_int()
+                    ty_int(None)
                 } else {
                     lhs.get_type()
                 }
@@ -61,13 +63,13 @@ impl Node {
             Node::Eq { .. } |
             Node::Ne { .. } |
             Node::Lt { .. } |
-            Node::Le { .. } =>   ty_int(),
+            Node::Le { .. } =>   ty_int(None),
             Node::Assign { lhs, .. }    =>  lhs.get_type(),
             Node::Addr (expr)   =>  {
-                Type::Ptr{ base: Box::new(expr.get_type()), size: 8 }
+                Type::Ptr{ name: None, base: Box::new(expr.get_type()), size: 8 }
             },
             Node::Deref (expr)  =>  {
-                if let Type::Ptr{ base, size:_ } = expr.get_type() {
+                if let Type::Ptr{ name:_, base, size:_ } = expr.get_type() {
                     *base
                 } else {
                     panic!("invalid pointer dereference")
@@ -75,7 +77,7 @@ impl Node {
             },
             Node::Var { name:_, ty }    =>  ty.clone(),
             Node::FuncCall { .. }       |
-            Node::Num (..)              =>  ty_int(),
+            Node::Num (..)              =>  ty_int(None),
             _   =>  panic!("not an expression: {:?}", &self),
         }
     }
@@ -153,20 +155,46 @@ impl Parser {
     // declspec = "int"
     fn declspec(&mut self) -> Type {
         self.tokenizer.skip("int");
-        ty_int()
+        ty_int(None)
     }
 
-    // declarator = "*" ident
+    // type-suffix = ("(" func-params)?
+    fn type_suffix(&mut self, ty: Type) -> Type {
+        let ty = ty.clone();
+        let token = self.tokenizer.cur_token().clone();
+
+        if self.tokenizer.peek_token("(") {
+            self.tokenizer.next_token();
+            self.tokenizer.next_token();
+
+            self.tokenizer.skip(")");
+            return Type::Function {
+                name:   Some(token.literal.to_string()),
+                ret_ty: Box::new(ty)
+            };
+        }
+        self.tokenizer.next_token();
+
+        ty
+    }
+
+    // declarator = "*" ident type-suffix
     fn declarator(&mut self, ty: Type) -> Type {
         let mut ty = ty.clone();
         while self.tokenizer.consume("*") {
-            ty = Type::Ptr { base: Box::new(ty), size: 8 };
+            ty = Type::Ptr {
+                name: None,
+                base: Box::new(ty),
+                size: 8,
+            };
         }
          
-        let token = self.tokenizer.cur_token();
+        let token = self.tokenizer.cur_token().clone();
         if token.kind != TokenKind::Ident {
-            self.tokenizer.error_tok(token, "expected a variable name");
+            self.tokenizer.error_tok(&token, "expected a variable name");
         }
+        ty.set_name(token.literal.to_string());
+        ty = self.type_suffix(ty);
 
         ty
     }
@@ -182,12 +210,13 @@ impl Parser {
             if i > 0 {
                 self.tokenizer.skip(",");
             }
+            i += 1;
 
             let ty = self.declarator(basety.clone());
-            let name = self.get_ident();
+            let name = ty.get_name().unwrap();
             self.new_lvar(&name, &ty);
 
-            if self.tokenizer.cur_token().equal("=") {
+            if !self.tokenizer.consume("=") {
                 continue;
             }
 
@@ -198,8 +227,6 @@ impl Parser {
                 rhs: Box::new(rhs),
             };
             decls.push(Box::new(Node::ExprStmt(Box::new(node))));
-
-            i += 1;
         }
 
         Some(Node::Block(decls))
@@ -548,16 +575,15 @@ impl Parser {
             return Some(Node::Var{ name, ty: ty });
         }
 
-        self.tokenizer.next_token().unwrap();
-
         if token.kind == TokenKind::Num {
             let node = Node::Num(token.val.unwrap());
+            self.tokenizer.next_token();
             return Some(node);
         }
 
         self.tokenizer.error_tok(
             self.tokenizer.cur_token(),
-            "expected an expression"
+            &format!("expected an expression: {:?}", self.tokenizer.cur_token()),
         );
         
         None
@@ -609,22 +635,39 @@ impl Parser {
 
         self.primary()
     }
- 
-    // program = "{" compound-stmt
-    pub fn parse(&mut self) -> Option<Node> {
-        self.tokenizer.skip("{");
 
+    // function-definition = declspec declarator "{" compound-stmt
+    fn function(&mut self) -> Option<Node> {
+        let basety = self.declspec();
+        let ty = self.declarator(basety.clone());
+        let locals = Rc::new(RefCell::new( Scope {
+            parent:     Some(Rc::clone(&self.scope)),
+            objs:       HashMap::new(),
+            stack_size: 0,
+        }));
+
+        self.scope = Rc::clone(&locals);
+        let name = ty.get_name().unwrap();
+
+        self.tokenizer.skip("{");
         let mut body = Vec::new();
         body.push(Box::new(self.compound_stmt().unwrap()));
-        
+
+        Some(Node::Function {
+            name:   name,
+            body:   body,
+            locals: locals,
+            ret_ty: Some(ty),
+        })
+    }
+ 
+    // program = function-definition*
+    pub fn parse(&mut self) -> Option<Node> {
         let mut prog = Vec::new();
 
-        let func = Node::Function {
-            body:   body,
-            locals: Rc::clone(&self.scope),
-        };
-
-        prog.push(Box::new(func));
+        while self.tokenizer.cur_token().kind != TokenKind::Eof {
+            prog.push(Box::new(self.function().unwrap()));
+        }
 
         Some(Node::Program(prog))
     }
