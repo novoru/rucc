@@ -38,7 +38,7 @@ impl CodeGenerator {
         match node {
             Node::Var { name, ty:_ }    =>  {
                 if let Some(func) = &self.cur_func {
-                    if let Node::Function { locals,..} = &**func {
+                    if let Node::Function { locals,.. } = &**func {
                         for obj in &locals.borrow().objs {
                             if obj.0 == name {
                                 println!("  lea {}(%rbp), %rax", -(obj.1.offset as i32));
@@ -225,7 +225,7 @@ impl CodeGenerator {
         self.cur_func = Some(Rc::new(func.clone()));
         println!("  .global main");
         match func {
-            Node::Function { name, body, locals, ret_ty:_ }  =>  {
+            Node::Function { name, params, body, locals, .. }  =>  {
                 println!("{}:", name);
                 
                 // Prologue
@@ -234,6 +234,13 @@ impl CodeGenerator {
                 println!("  mov %rsp, %rbp");
                 println!("  sub ${}, %rsp", locals.borrow().stack_size);
                 
+                // Save passed-by-register arguments to the stack
+                let mut i = 0;
+                for obj in &params.borrow().objs {
+                    println!("  mov {}, {}(%rbp)", ARGREG[i], -(obj.1.offset as i32));
+                    i += 1;
+                }
+
                 // Emit code
                 for stmt in body {
                     self.gen_stmt(&stmt);

@@ -37,6 +37,7 @@ pub enum Node {
     FuncCall    { name: String, args: Vec<Box<Node>> }, // Function call
     Function    {                                       // Function definition
                     name:   String,
+                    params: Rc<RefCell<Scope>>,
                     body:   Vec<Box<Node>>,
                     locals: Rc<RefCell<Scope>>,
                     ret_ty: Option<Type>,
@@ -144,6 +145,12 @@ impl Parser {
         self.scope.borrow_mut().add_var(name, ty);
     }
 
+    fn new_param_lvars(&mut self, params: &Vec<Type>) {
+        for param in params {
+            self.new_lvar(&param.get_name().unwrap(), param);
+        }
+    }
+
     fn get_ident(&self) -> String {
         let token = self.tokenizer.cur_token();
         if token.kind != TokenKind::Ident {
@@ -158,7 +165,9 @@ impl Parser {
         ty_int(None)
     }
 
-    // type-suffix = ("(" func-params)?
+    // type-suffix = ("(" func-params? ")")?
+    // func-params = param ("," param)*
+    // param       = declspec declarator
     fn type_suffix(&mut self, ty: Type) -> Type {
         let ty = ty.clone();
         let token = self.tokenizer.cur_token().clone();
@@ -167,10 +176,24 @@ impl Parser {
             self.tokenizer.next_token();
             self.tokenizer.next_token();
 
-            self.tokenizer.skip(")");
+            let mut params = Vec::new();
+
+            while !self.tokenizer.consume(")") {
+                if params.len() != 0 {
+                    self.tokenizer.skip(",");
+                }
+
+                let basety = self.declspec();
+                let ty = self.declarator(basety);
+                params.push(ty);
+            }
+
+            self.new_param_lvars(&params);
+
             return Type::Function {
                 name:   Some(token.literal.to_string()),
-                ret_ty: Box::new(ty)
+                params: Some(params),
+                ret_ty: Box::new(ty),
             };
         }
         self.tokenizer.next_token();
@@ -638,16 +661,18 @@ impl Parser {
 
     // function-definition = declspec declarator "{" compound-stmt
     fn function(&mut self) -> Option<Node> {
-        let basety = self.declspec();
-        let ty = self.declarator(basety.clone());
         let locals = Rc::new(RefCell::new( Scope {
-            parent:     Some(Rc::clone(&self.scope)),
+            parent:     None,
             objs:       HashMap::new(),
             stack_size: 0,
         }));
-
         self.scope = Rc::clone(&locals);
+
+        let basety = self.declspec();
+        let ty = self.declarator(basety.clone());
         let name = ty.get_name().unwrap();
+
+        let params = Rc::clone(&self.scope);
 
         self.tokenizer.skip("{");
         let mut body = Vec::new();
@@ -655,8 +680,9 @@ impl Parser {
 
         Some(Node::Function {
             name:   name,
+            params: params,
             body:   body,
-            locals: locals,
+            locals: Rc::clone(&self.scope),
             ret_ty: Some(ty),
         })
     }

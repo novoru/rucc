@@ -2,7 +2,7 @@
 pub enum Type {
     Int { name: Option<String>, size: u32 },
     Ptr { name: Option<String>, base: Box<Type>, size: u32 },
-    Function { name: Option<String>, ret_ty: Box<Type> },
+    Function { name: Option<String>, params: Option<Vec<Type>> ,ret_ty: Box<Type> },
 }
 
 pub fn ty_int(name: Option<String>) -> Type {
