@@ -3,6 +3,7 @@ pub enum Type {
     Int { name: Option<String>, size: u32 },
     Ptr { name: Option<String>, base: Box<Type>, size: u32 },
     Function { name: Option<String>, params: Option<Vec<Type>> ,ret_ty: Box<Type> },
+    Array { name: Option<String>, base: Box<Type>, size: u32, len: u32 },
 }
 
 pub fn ty_int(name: Option<String>) -> Type {
@@ -26,8 +27,9 @@ impl Type {
 
     pub fn get_size(&self) -> u32 {
         match self {
-            Type::Int { name:_, size }          |
-            Type::Ptr { name:_, base:_, size }  => *size,
+            Type::Int { size, .. }      |
+            Type::Ptr { size, .. }      |
+            Type::Array { size, .. }    => *size,
             _   => panic!("dont have the size field: {:?}", self),
         }
     }
@@ -36,7 +38,8 @@ impl Type {
         match self {
             Type::Int { name, .. }      |
             Type::Ptr { name,.. }       |
-            Type::Function { name, .. } =>  name.clone(),
+            Type::Function { name, .. } |
+            Type::Array { name, .. }    =>  name.clone(),
         }
     }
 
@@ -44,7 +47,8 @@ impl Type {
         match self {
             Type::Int { name, .. }      |
             Type::Ptr { name,.. }       |
-            Type::Function { name, .. } =>  *name = Some(s),
+            Type::Function { name, .. } |
+            Type::Array { name, .. }    =>  *name = Some(s),
         }
     }
 }

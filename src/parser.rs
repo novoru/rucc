@@ -1,6 +1,5 @@
 use std::rc::Rc;
 use std::cell::RefCell;
-use std::collections::HashMap;
 use crate::tokenizer::{ TokenKind, Tokenizer };
 use crate::ty::*;
 
@@ -93,7 +92,7 @@ pub struct Obj {
 #[derive(Debug, PartialEq)]
 pub struct Scope {
     parent:     Option<Rc<RefCell<Scope>>>,
-    pub objs:   HashMap<String, Obj>,
+    pub objs:   Vec<Obj>,
     pub stack_size: u32,
 }
 
@@ -102,19 +101,24 @@ impl Scope {
         (n + align - 1) / align * align
     }
 
-    pub fn add_var(&mut self, name: &str, ty: &Type) {
+    pub fn add_var(&mut self, ty: &Type) {
         let mut offset = ty.get_size();
-        for obj in self.objs.values_mut() {
+        for obj in &mut self.objs {
             obj.offset += ty.get_size();
             offset += obj.ty.get_size();
         }
         let obj = Obj { offset: 8, ty: ty.clone() };
-        self.objs.insert(name.to_string(), obj);
+        self.objs.push(obj);
         self.stack_size = self.align_to(offset, 16);
     }
 
-    pub fn find_var(&mut self, name: &str) -> Option<&Obj> {
-        self.objs.get(name)
+    pub fn find_var(&self, name: &str) -> Option<&Obj> {
+        for obj in &self.objs {
+            if obj.ty.get_name().unwrap() == name {
+                return Some(&obj)
+            }
+        }
+        None
     }
 
     pub fn add_parent(&mut self, parent: &Rc<RefCell<Scope>>) {
@@ -124,8 +128,8 @@ impl Scope {
 
 #[derive(Debug)]
 pub struct Parser {
-    pub scope:     Rc<RefCell<Scope>>,
-    tokenizer:  Tokenizer,
+    pub scope:      Rc<RefCell<Scope>>,
+    tokenizer:      Tokenizer,
 }
 
 impl Parser {
@@ -135,19 +139,19 @@ impl Parser {
 
         Parser {
             scope: Rc::new(RefCell::new( Scope {
-                parent: None, objs: HashMap::new(), stack_size: 0,
+                parent: None, objs: Vec::new(), stack_size: 0,
             })),
             tokenizer:  tokenizer,
         }
     }
 
-    fn new_lvar(&mut self, name: &str, ty: &Type) {
-        self.scope.borrow_mut().add_var(name, ty);
+    fn new_lvar(&mut self, ty: &Type) {
+        (*self.scope).borrow_mut().add_var(ty);
     }
 
     fn new_param_lvars(&mut self, params: &Vec<Type>) {
         for param in params {
-            self.new_lvar(&param.get_name().unwrap(), param);
+            self.new_lvar(param);
         }
     }
 
@@ -237,7 +241,7 @@ impl Parser {
 
             let ty = self.declarator(basety.clone());
             let name = ty.get_name().unwrap();
-            self.new_lvar(&name, &ty);
+            self.new_lvar(&ty);
 
             if !self.tokenizer.consume("=") {
                 continue;
@@ -588,7 +592,7 @@ impl Parser {
             self.tokenizer.next_token().unwrap();
 
             // Variable
-            let ty = if let Some(obj) = self.scope.borrow_mut().find_var(&name) {
+            let ty = if let Some(obj) = self.scope.borrow().find_var(&name) {
                 obj.ty.clone()
             } else {
                 self.tokenizer.error_tok(&token, "undefined variable");
@@ -663,7 +667,7 @@ impl Parser {
     fn function(&mut self) -> Option<Node> {
         let locals = Rc::new(RefCell::new( Scope {
             parent:     None,
-            objs:       HashMap::new(),
+            objs:       Vec::new(),
             stack_size: 0,
         }));
         self.scope = Rc::clone(&locals);

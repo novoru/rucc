@@ -40,8 +40,8 @@ impl CodeGenerator {
                 if let Some(func) = &self.cur_func {
                     if let Node::Function { locals,.. } = &**func {
                         for obj in &locals.borrow().objs {
-                            if obj.0 == name {
-                                println!("  lea {}(%rbp), %rax", -(obj.1.offset as i32));
+                            if &obj.ty.get_name().unwrap() == name {
+                                println!("  lea {}(%rbp), %rax", -(obj.offset as i32));
                                 return;
                             }
                         }
@@ -236,8 +236,8 @@ impl CodeGenerator {
                 
                 // Save passed-by-register arguments to the stack
                 let mut i = 0;
-                for obj in &params.borrow().objs {
-                    println!("  mov {}, {}(%rbp)", ARGREG[i], -(obj.1.offset as i32));
+                for param in &params.borrow().objs {
+                    println!("  mov {}, {}(%rbp)", ARGREG[i], -(param.offset as i32));
                     i += 1;
                 }
 
