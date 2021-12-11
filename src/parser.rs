@@ -188,7 +188,6 @@ impl Parser {
     // func-params = (param ("," param)*)? ")"
     // param       = declspec declarator
     fn func_params(&mut self, ty: Type) -> Type {
-        let token = self.tokenizer.cur_token().clone();
         self.tokenizer.next_token();
         self.tokenizer.next_token();
         let mut params = Vec::new();
@@ -204,18 +203,17 @@ impl Parser {
         self.new_param_lvars(&params);
 
         Type::Function {
-            name:   Some(token.literal.to_string()),
+            name:   ty.get_name(),
             params: Some(params),
             ret_ty: Box::new(ty),
         }
     }
 
-    // type-suffix = "'" func-pramas
-    //             | "[" num "]"
+    // type-suffix = "(" func-pramas
+    //             | "[" num "]" type-suffix
     //             | ε
     fn type_suffix(&mut self, ty: Type) -> Type {
-        let ty = ty.clone();
-        let token = self.tokenizer.cur_token().clone();
+        let mut ty = ty.clone();
 
         if self.tokenizer.peek_token("(") {
             return self.func_params(ty);
@@ -230,16 +228,19 @@ impl Parser {
                 self.tokenizer.error_tok(self.tokenizer.cur_token(), "expected a number");
                 panic!();
             };
-            self.tokenizer.skip("]");
+            let token = self.tokenizer.cur_token();
+            if !token.equal("]") {
+                self.tokenizer.error_tok(&token, "expected ']'");
+            }
+            ty = self.type_suffix(ty.clone());
 
             return Type::Array {
-                name:   Some(token.literal.clone()),
+                name:   ty.get_name(),
                 base:   Box::new(ty.clone()),
                 size:   ty.get_size()*sz,
                 len:    sz,
             };
         }
-
         self.tokenizer.next_token();
 
         ty
@@ -530,7 +531,7 @@ impl Parser {
 
                 rhs = Node::Mul {
                     lhs: Box::new(rhs),
-                    rhs: Box::new(Node::Num(node.get_type().get_size())),
+                    rhs: Box::new(Node::Num(node.get_type().get_base().get_size())),
                 };
                 node = Node::Add {
                     lhs: Box::new(node),
