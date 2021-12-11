@@ -1,4 +1,5 @@
 use std::process;
+use crate::ty::*;
 
 static KWDS: &'static [&str] = &[
     "return", "if", "for", "while", "int", "sizeof", "char",
@@ -8,6 +9,7 @@ static KWDS: &'static [&str] = &[
 pub enum TokenKind {
     Ident,      // Identifiers
     Keyword,    // Keywords
+    Str,        // String
     Num,        // Numeric literals
     Punct,      // Punctuators
     Eof,        // End-of-file markers
@@ -19,6 +21,7 @@ pub struct Token {
     loc:            usize,
     pub val:        Option<u32>,
     pub literal:    String,
+    pub ty:         Option<Type>,   // Used if TokenKind::Str
 }
 
 impl Token {
@@ -28,6 +31,7 @@ impl Token {
             loc:        loc,
             val:        None,
             literal:    s.to_string(),
+            ty:         None,
         }
     }
 
@@ -37,6 +41,22 @@ impl Token {
             loc:        loc,
             val:        Some(val),
             literal:    s.to_string(),
+            ty:         None,
+        }
+    }
+
+    pub fn new_str(loc: usize, s: &str, len: u32) -> Self {
+        Token {
+            kind:       TokenKind::Str,
+            loc:        loc,
+            val:        None,
+            literal:    s.to_string(),
+            ty:         Some(Type::Array {
+                name:   None,
+                base:   Box::new(ty_char(None)),
+                size:   len,
+                len:    len,
+            }),
         }
     }
 
@@ -79,6 +99,12 @@ impl Tokenizer {
             // Numeric literal
             if self.ch.is_digit(10) {
                 self.read_num();
+                continue;
+            }
+
+            // String literal
+            if self.ch == '"' {
+                self.read_string_literal();
                 continue;
             }
 
@@ -202,6 +228,23 @@ impl Tokenizer {
         false
     }
 
+    fn read_string_literal(&mut self) {
+        self.read_char();
+        let start = self.pos;
+        while self.ch != '"' {
+            self.read_char();
+            if self.ch == '\n' || self.ch == '\0' {
+                self.error_at(start, "unclosed string literal");
+            }
+        }
+        self.read_char();
+        let mut literal = self.input[start..self.pos-1].to_string();
+        literal.push('\0');
+        self.tokens.push(Token::new_str(
+            start, &literal, self.pos as u32 - start as u32
+        ));
+    }
+
     pub fn consume(&mut self, op: &str) -> bool {
         if self.idx >= self.tokens.len() {  
             return false;
@@ -271,6 +314,7 @@ fn test_tokenize_kwds() {
             loc:        0,
             val:        None,
             literal:    "for".to_string(),
+            ty:         None,
         }
     );
     assert_eq!(
@@ -280,6 +324,28 @@ fn test_tokenize_kwds() {
             loc:        4,
             val:        None,
             literal:    "for1".to_string(),
+            ty:         None,
+        }
+    );
+}
+
+#[test]
+fn test_string_literal() {
+    let mut tokenizer = Tokenizer::new(" \"str\" ");
+    tokenizer.tokenize();
+    assert_eq!(
+        tokenizer.next_token().unwrap(),
+        Token {
+            kind:       TokenKind::Str,
+            loc:        2,
+            val:        None,
+            literal:    "str\0".to_string(),
+            ty:         Some(Type::Array {
+                name:   None,
+                base:   Box::new(ty_char(None)),
+                size:   4,
+                len:    4,
+            }),
         }
     );
 }

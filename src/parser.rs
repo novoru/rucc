@@ -103,8 +103,9 @@ impl Node {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Obj {
-    pub offset: u32,
-    pub ty:     Type,
+    pub offset:     u32,
+    pub ty:         Type,
+    pub init_data:  Option<Vec<u8>> // Global variable
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -119,16 +120,18 @@ impl Scope {
         (n + align - 1) / align * align
     }
 
-    pub fn add_var(&mut self, ty: &Type) {
+    pub fn add_var(&mut self, ty: &Type, int_data: Option<Vec<u8>>) -> Obj {
         let mut offset = ty.get_size();
         for obj in &mut self.objs {
             obj.offset += ty.get_size();
             offset += obj.ty.get_size();
         }
         let size = ty.get_size();
-        let obj = Obj { offset: size, ty: ty.clone() };
-        self.objs.push(obj);
+        let obj = Obj { offset: size, ty: ty.clone(), init_data: int_data };
+        self.objs.push(obj.clone());
         self.stack_size = self.align_to(offset, 16);
+
+        obj
     }
 
     pub fn find_var(&self, name: &str) -> Option<Obj> {
@@ -152,6 +155,7 @@ impl Scope {
 
 #[derive(Debug)]
 pub struct Parser {
+    id:             u32,
     global:         Rc<RefCell<Scope>>,
     pub scope:      Rc<RefCell<Scope>>,
     tokenizer:      Tokenizer,
@@ -163,6 +167,7 @@ impl Parser {
         tokenizer.tokenize();
 
         Parser {
+            id: 0,
             global: Rc::new(RefCell::new( Scope {
                 parent: None, objs: Vec::new(), stack_size: 0,
             })),
@@ -174,13 +179,30 @@ impl Parser {
     }
 
     fn new_lvar(&mut self, ty: &Type) {
-        (*self.scope).borrow_mut().add_var(ty);
+        (*self.scope).borrow_mut().add_var(ty, None);
     }
 
     fn new_param_lvars(&mut self, params: &Vec<Type>) {
         for param in params {
             self.new_lvar(param);
         }
+    }
+
+    fn new_unique_name(&mut self) -> String {
+        let s = format!(".L..{}", self.id);
+        self.id += 1;
+
+        s
+    }
+
+    fn new_anon_gvar(&mut self, s: String, ty: Type) -> Obj {
+        let mut ty = ty.clone();
+        ty.set_name(self.new_unique_name());
+        self.global.borrow_mut().add_var(&ty, Some(s.bytes().collect::<Vec<u8>>()))
+    }
+
+    fn new_string_literal(&mut self, s: String, ty: Type) -> Obj {
+        self.new_anon_gvar(s, ty)
     }
 
     fn get_ident(&self) -> String {
@@ -631,7 +653,7 @@ impl Parser {
         Some(Node::FuncCall { name, args })
     }
 
-    // primary = "(" expr ")" | "sizeof" unary | ident args? | num
+    // primary = "(" expr ")" | "sizeof" unary | ident args? | str | num
     fn primary(&mut self) -> Option<Node> {
         if self.tokenizer.consume("(") {
             let node = self.expr().unwrap();
@@ -664,6 +686,15 @@ impl Parser {
             };
 
             return Some(Node::Var{ name, ty: ty });
+        }
+
+        if token.kind == TokenKind::Str {
+            let var = self.new_string_literal(token.literal.clone(), token.ty.clone().unwrap());
+            self.tokenizer.next_token();
+            return Some(Node::Var {
+                name:   var.ty.get_name().unwrap(),
+                ty:     token.ty.unwrap(),
+            })
         }
 
         if token.kind == TokenKind::Num {
@@ -782,7 +813,7 @@ impl Parser {
             first = false;
 
             let ty = self.declarator(basety.clone());
-            self.global.borrow_mut().add_var(&ty);
+            self.global.borrow_mut().add_var(&ty, None);
         }
     }
  

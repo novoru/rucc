@@ -309,7 +309,14 @@ impl CodeGenerator {
             println!("  .data");
             println!("  .globl {}", var.ty.get_name().unwrap());
             println!("{}:", var.ty.get_name().unwrap());
-            println!("  .zero {}", var.ty.get_size());
+
+            if let Some(init_data) = &var.init_data {
+                for ch in init_data {
+                    println!("  .byte {}", ch);
+                }
+            } else {
+                println!("  .zero {}", var.ty.get_size());
+            }
         }
     }
 
