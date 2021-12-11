@@ -1,9 +1,14 @@
 #[derive(Debug, Clone, PartialEq)]
 pub enum Type {
+    Char { name: Option<String>, size: u32 },
     Int { name: Option<String>, size: u32 },
     Ptr { name: Option<String>, base: Box<Type>, size: u32 },
     Function { name: Option<String>, params: Option<Vec<Type>> ,ret_ty: Box<Type> },
     Array { name: Option<String>, base: Box<Type>, size: u32, len: u32 },
+}
+
+pub fn ty_char(name: Option<String>) -> Type {
+    Type::Char { name: name, size: 1 }
 }
 
 pub fn ty_int(name: Option<String>) -> Type {
@@ -11,6 +16,17 @@ pub fn ty_int(name: Option<String>) -> Type {
 }
 
 impl Type {
+    pub fn is_num(&self) -> bool {
+        self.is_char() || self.is_integer()
+    }
+
+    pub fn is_char(&self) -> bool {
+        match self {
+            Type::Char {..} =>  true,
+            _               =>  false,
+        }
+    }
+
     pub fn is_integer(&self) -> bool {
         match self {
             Type::Int {..}  =>  true,
@@ -28,6 +44,7 @@ impl Type {
 
     pub fn get_size(&self) -> u32 {
         match self {
+            Type::Char { size, .. }     |
             Type::Int { size, .. }      |
             Type::Ptr { size, .. }      |
             Type::Array { size, .. }    => *size,
@@ -37,6 +54,7 @@ impl Type {
 
     pub fn get_name(&self) -> Option<String> {
         match self {
+            Type::Char { name, .. }     |
             Type::Int { name, .. }      |
             Type::Ptr { name,.. }       |
             Type::Function { name, .. } |
@@ -46,6 +64,7 @@ impl Type {
 
     pub fn set_name(&mut self, s: String) {
         match self {
+            Type::Char { name, .. }     |
             Type::Int { name, .. }      |
             Type::Ptr { name,.. }       |
             Type::Function { name, .. } |

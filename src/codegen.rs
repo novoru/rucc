@@ -3,7 +3,13 @@ use crate::util::error;
 use crate::parser::{ Node, Obj };
 use crate::ty::Type;
 
-static ARGREG: &'static [&str] = &["%rdi", "%rsi", "%rdx", "%rcx", "%r8", "%r9"];
+static ARGREG8: &'static [&str] = &[
+    "%dil", "%sil", "%dl", "%cl", "%r8b", "%r9b"
+];
+
+static ARGREG64: &'static [&str] = &[
+    "%rdi", "%rsi", "%rdx", "%rcx", "%r8", "%r9"
+];
 
 pub struct CodeGenerator {
     cur_func:   Option<Rc<Node>>,
@@ -34,17 +40,26 @@ impl CodeGenerator {
     }
     
     // Load a value from where %rax is pointing to.
-    fn load(&self, ty: Type) {
+    fn load(&self, ty: &Type) {
         if let Type::Array { .. } = ty {
             return;
         }
 
-        println!("  mov (%rax), %rax");
+        if ty.get_size() == 1 {
+            println!("  movsbq (%rax), %rax");
+        } else {
+            println!("  mov (%rax), %rax");
+        }
     }
 
-    fn store(&self) {
+    fn store(&self, ty: &Type) {
         self.pop("%rdi");
-        println!("  mov %rax, (%rdi)");
+
+        if ty.get_size() == 1 {
+            println!("  mov %al, (%rdi)");
+        } else {
+            println!("  mov %rax, (%rdi)");
+        }
     }
 
     // Compute the absolute address of a given node.
@@ -158,7 +173,7 @@ impl CodeGenerator {
             },
             Node::Deref (expr)  =>  {
                 self.gen_expr(expr);
-                self.load(node.get_type().clone());
+                self.load(&node.get_type());
             },
             Node::Addr (expr)   =>  {
                 self.gen_addr(expr);
@@ -167,11 +182,11 @@ impl CodeGenerator {
                 self.gen_addr(lhs);
                 self.push();
                 self.gen_expr(rhs);
-                self.store();
+                self.store(&node.get_type());
             },
             Node::Var { ty, .. }    =>  {
                 self.gen_addr(node);
-                self.load(ty.clone());
+                self.load(&ty);
             },
             Node::FuncCall { name, args } =>  {
                 for arg in args {
@@ -180,7 +195,7 @@ impl CodeGenerator {
                 }
 
                 for i in (0..args.len()).rev() {
-                    self.pop(ARGREG[i]);
+                    self.pop(ARGREG64[i]);
                 }
 
                 println!("  mov $0, %rax");
@@ -266,7 +281,11 @@ impl CodeGenerator {
                 // Save passed-by-register arguments to the stack
                 let mut i = 0;
                 for param in &params.objs {
-                    println!("  mov {}, {}(%rbp)", ARGREG[i], -(param.offset as i32));
+                    if param.ty.get_size() == 1 {
+                        println!("  mov {}, {}(%rbp)", ARGREG8[i], -(param.offset as i32));
+                    } else {
+                        println!("  mov {}, {}(%rbp)", ARGREG64[i], -(param.offset as i32));
+                    }
                     i += 1;
                 }
 

@@ -1,6 +1,8 @@
 use std::process;
 
-static KWDS: &'static [&str] = &["return", "if", "for", "while", "int", "sizeof"];
+static KWDS: &'static [&str] = &[
+    "return", "if", "for", "while", "int", "sizeof", "char",
+];
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum TokenKind {

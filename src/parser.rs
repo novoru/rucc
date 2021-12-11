@@ -1,6 +1,6 @@
 use std::rc::Rc;
 use std::cell::RefCell;
-use crate::tokenizer::{ TokenKind, Tokenizer };
+use crate::tokenizer::{ Token, TokenKind, Tokenizer };
 use crate::ty::*;
 
 // Ast node type
@@ -191,8 +191,12 @@ impl Parser {
         token.literal.to_string()
     }
 
-    // declspec = "int"
+    // declspec = "char" | "int"
     fn declspec(&mut self) -> Type {
+        if self.tokenizer.consume("char") {
+            return ty_char(None);
+        }
+
         self.tokenizer.skip("int");
         ty_int(None)
     }
@@ -312,6 +316,10 @@ impl Parser {
         Some(Node::Block(decls))
     }
 
+    fn is_typename(&self, token: &Token) -> bool {
+       token.equal("char") || token.equal("int")
+    }
+
     // stmt = "return" expr ";"
     //      | "if" "(" expr ")" stmt ("else" stmt)?
     //      | "for" "(" expr-stmt expr? ";" expr?  ")" stmt
@@ -397,7 +405,7 @@ impl Parser {
         let mut stmts = Vec::new();
 
         while !self.tokenizer.consume("}") {
-            if self.tokenizer.cur_token().equal("int") {
+            if self.is_typename(&self.tokenizer.cur_token()) {
                 stmts.push(Box::new(self.declaration().unwrap()))
             } else {
                 stmts.push(Box::new(self.stmt().unwrap()));
@@ -511,7 +519,7 @@ impl Parser {
     // pointer value. This function takes care of the scaling.
     fn new_add(&mut self, mut lhs: Node, mut rhs: Node) -> Option<Node> {
         // num + num
-        if lhs.get_type().is_integer() && rhs.get_type().is_integer() {
+        if lhs.get_type().is_num() && rhs.get_type().is_num() {
             return  Some(Node::Add {
                 lhs: Box::new(lhs),
                 rhs: Box::new(rhs),
@@ -544,7 +552,7 @@ impl Parser {
 
     fn new_sub(&mut self, mut lhs: Node, mut rhs: Node) -> Option<Node> {
         // num - num
-        if lhs.get_type().is_integer() && rhs.get_type().is_integer() {
+        if lhs.get_type().is_num() && rhs.get_type().is_num() {
             return Some(Node::Sub {
                 lhs: Box::new(lhs),
                 rhs: Box::new(rhs),
@@ -552,7 +560,7 @@ impl Parser {
         }
 
         // ptr - num
-        if lhs.get_type().is_ptr() && rhs.get_type().is_integer() {
+        if lhs.get_type().is_ptr() && rhs.get_type().is_num() {
             rhs = Node::Mul {
                 lhs: Box::new(rhs),
                 rhs: Box::new(Node::Num(lhs.get_type().get_size())),
