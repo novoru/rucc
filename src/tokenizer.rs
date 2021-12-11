@@ -48,7 +48,7 @@ pub struct Tokenizer {
     input:  String,
     pos:    usize,
     rpos:   usize,
-    idx:    usize,
+    pub idx:    usize,
     tokens: Vec<Token>,
     ch:     char,
 }

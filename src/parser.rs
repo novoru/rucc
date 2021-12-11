@@ -20,28 +20,31 @@ pub enum Node {
     Deref       ( Box<Node> ),                          // unary *
     Return      ( Box<Node> ),                          // "return"
     If          {                                       // "if"
-                    cond:   Box<Node>,
-                    then:   Box<Node>,
-                    els:    Option<Box<Node>>,
-                },
+        cond:   Box<Node>,
+        then:   Box<Node>,
+        els:    Option<Box<Node>>,
+    },
     For         {                                       // "for" of "while"
-                    init:   Option<Box<Node>>,
-                    cond:   Option<Box<Node>>,
-                    inc:    Option<Box<Node>>,
-                    body:   Box<Node>,
-                },
+        init:   Option<Box<Node>>,
+        cond:   Option<Box<Node>>,
+        inc:    Option<Box<Node>>,
+        body:   Box<Node>,
+    },
     Block       ( Vec<Box<Node>> ),                     // { ... }
     ExprStmt    ( Box<Node> ),                          // Expression statement
     Var         { name: String, ty: Type },             // Variable
     FuncCall    { name: String, args: Vec<Box<Node>> }, // Function call
     Function    {                                       // Function definition
-                    name:   String,
-                    params: Scope,
-                    body:   Vec<Box<Node>>,
-                    locals: Rc<RefCell<Scope>>,
-                    ret_ty: Option<Type>,
-                },
-    Program     ( Vec<Box<Node>> ),                     // Program
+        name:   String,
+        params: Scope,
+        body:   Vec<Box<Node>>,
+        locals: Rc<RefCell<Scope>>,
+        ret_ty: Option<Type>,
+    },
+    Program     {                                       // Program
+        data: Rc<RefCell<Scope>>,
+        text: Vec<Box<Node>>
+    },
     Num         ( u32 ),                                // Integer
 }
 
@@ -106,8 +109,8 @@ pub struct Obj {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Scope {
-    parent:     Option<Rc<RefCell<Scope>>>,
-    pub objs:   Vec<Obj>,
+    pub parent:     Option<Rc<RefCell<Scope>>>,
+    pub objs:       Vec<Obj>,
     pub stack_size: u32,
 }
 
@@ -128,12 +131,17 @@ impl Scope {
         self.stack_size = self.align_to(offset, 16);
     }
 
-    pub fn find_var(&self, name: &str) -> Option<&Obj> {
+    pub fn find_var(&self, name: &str) -> Option<Obj> {
         for obj in &self.objs {
             if obj.ty.get_name().unwrap() == name {
-                return Some(&obj)
+                return Some(obj.clone())
             }
         }
+
+        if let Some(scope) = &self.parent {
+            return scope.borrow().find_var(name);
+        }
+
         None
     }
 
@@ -144,6 +152,7 @@ impl Scope {
 
 #[derive(Debug)]
 pub struct Parser {
+    global:         Rc<RefCell<Scope>>,
     pub scope:      Rc<RefCell<Scope>>,
     tokenizer:      Tokenizer,
 }
@@ -154,6 +163,9 @@ impl Parser {
         tokenizer.tokenize();
 
         Parser {
+            global: Rc::new(RefCell::new( Scope {
+                parent: None, objs: Vec::new(), stack_size: 0,
+            })),
             scope: Rc::new(RefCell::new( Scope {
                 parent: None, objs: Vec::new(), stack_size: 0,
             })),
@@ -722,15 +734,14 @@ impl Parser {
     }
 
     // function-definition = declspec declarator "{" compound-stmt
-    fn function(&mut self) -> Option<Node> {
+    fn function(&mut self, basety: Type) -> Option<Node> {
         let locals = Rc::new(RefCell::new( Scope {
-            parent:     None,
+            parent:     Some(Rc::clone(&self.global)),
             objs:       Vec::new(),
             stack_size: 0,
         }));
         self.scope = Rc::clone(&locals);
 
-        let basety = self.declspec();
         let ty = self.declarator(basety.clone());
         let name = ty.get_name().unwrap();
 
@@ -752,15 +763,53 @@ impl Parser {
             ret_ty: Some(ty),
         })
     }
+
+    fn global_variables(&mut self, basety: Type) {
+        let mut first = true;
+
+        while !self.tokenizer.consume(";") {
+            if !first {
+                self.tokenizer.skip(",");
+            }
+            first = false;
+
+            let ty = self.declarator(basety.clone());
+            self.global.borrow_mut().add_var(&ty);
+        }
+    }
  
-    // program = function-definition*
+    fn is_function(&mut self) -> bool {
+        if self.tokenizer.cur_token().equal(";") {
+            return false;
+        }
+
+        let idx = self.tokenizer.idx;
+        if let Type::Function {..} = self.declarator(ty_int(None)) {
+            self.tokenizer.idx = idx;
+            true
+        } else {
+            self.tokenizer.idx = idx;
+            false
+        }
+    }
+
+    // program = (function-definition | global-variable)*
     pub fn parse(&mut self) -> Option<Node> {
         let mut prog = Vec::new();
 
         while self.tokenizer.cur_token().kind != TokenKind::Eof {
-            prog.push(Box::new(self.function().unwrap()));
+            let basety = self.declspec();
+
+            if self.is_function() {
+                prog.push(Box::new(self.function(basety).unwrap()));
+                continue;
+            }
+            self.global_variables(basety);
         }
 
-        Some(Node::Program(prog))
+        Some(Node::Program {
+            data:   Rc::clone(&self.global),
+            text:   prog,
+        })
     }
 }

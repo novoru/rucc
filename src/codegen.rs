@@ -1,6 +1,6 @@
 use std::rc::Rc;
 use crate::util::error;
-use crate::parser::Node;
+use crate::parser::{ Node, Obj };
 use crate::ty::Type;
 
 static ARGREG: &'static [&str] = &["%rdi", "%rsi", "%rdx", "%rcx", "%r8", "%r9"];
@@ -58,6 +58,20 @@ impl CodeGenerator {
                             if &obj.ty.get_name().unwrap() == name {
                                 println!("  lea {}(%rbp), %rax", -(obj.offset as i32));
                                 return;
+                            }
+                        }
+
+                        if let Some(scope) = &locals.borrow().parent {
+                            for var in &scope.borrow().objs {
+                                if &var.ty.get_name().unwrap() == name {
+                                    if scope.borrow().parent == None {
+                                        println!("  lea {}(%rip), %rax", var.ty.get_name().unwrap());
+                                        return;
+                                    } else {
+                                        println!("  lea {}(%rbp), %rax", -(var.offset as i32));
+                                        return;
+                                    }
+                                }
                             }
                         }
                     }
@@ -237,9 +251,10 @@ impl CodeGenerator {
 
     fn gen_func(&mut self, func: &Node) {
         self.cur_func = Some(Rc::new(func.clone()));
-        println!("  .global main");
         match func {
             Node::Function { name, params, body, locals, .. }  =>  {
+                println!("  .globl {}", name);
+                println!("  .text");
                 println!("{}:", name);
                 
                 // Prologue
@@ -270,10 +285,20 @@ impl CodeGenerator {
         }
     }
 
+    fn emit_data(&self, objs: &Vec<Obj>) {
+        for var in objs {
+            println!("  .data");
+            println!("  .globl {}", var.ty.get_name().unwrap());
+            println!("{}:", var.ty.get_name().unwrap());
+            println!("  .zero {}", var.ty.get_size());
+        }
+    }
+
     fn gen_prog(&mut self, prog: &mut Node) {
         match prog {
-            Node::Program (ref mut funcs ) =>  {
-                for func in funcs {
+            Node::Program {data, ref mut text}  =>  {
+                self.emit_data(&data.borrow().objs);
+                for func in text {
                     self.gen_func(func);
                 }
             },
