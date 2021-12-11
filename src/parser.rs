@@ -497,95 +497,94 @@ impl Parser {
     // so that p+n points to the location n elements (not bytes) ahead of p.
     // In other words, we need to scale an integer value before adding to a
     // pointer value. This function takes care of the scaling.
+    fn new_add(&mut self, mut lhs: Node, mut rhs: Node) -> Option<Node> {
+        // num + num
+        if lhs.get_type().is_integer() && rhs.get_type().is_integer() {
+            return  Some(Node::Add {
+                lhs: Box::new(lhs),
+                rhs: Box::new(rhs),
+            });
+        }
+
+        if lhs.get_type().is_ptr() && rhs.get_type().is_ptr() {
+            self.tokenizer.error_tok(
+                self.tokenizer.cur_token(),
+                "invalid operands"
+            );
+        }
+
+        // Canonicalize `num + ptr` to `ptr + num`.
+        if !lhs.get_type().is_ptr() && rhs.get_type().is_ptr() {
+            let tmp = lhs;
+            lhs = rhs;
+            rhs = tmp;
+        }
+
+        rhs = Node::Mul {
+            lhs: Box::new(rhs),
+            rhs: Box::new(Node::Num(lhs.get_type().get_base().get_size())),
+        };
+        return Some(Node::Add {
+            lhs: Box::new(lhs),
+            rhs: Box::new(rhs),
+        });
+    }
+
+    fn new_sub(&mut self, mut lhs: Node, mut rhs: Node) -> Option<Node> {
+        // num - num
+        if lhs.get_type().is_integer() && rhs.get_type().is_integer() {
+            return Some(Node::Sub {
+                lhs: Box::new(lhs),
+                rhs: Box::new(rhs),
+            });
+        }
+
+        // ptr - num
+        if lhs.get_type().is_ptr() && rhs.get_type().is_integer() {
+            rhs = Node::Mul {
+                lhs: Box::new(rhs),
+                rhs: Box::new(Node::Num(lhs.get_type().get_size())),
+            };
+            return Some(Node::Sub {
+                lhs: Box::new(lhs),
+                rhs: Box::new(rhs),
+            });
+        }
+
+        // ptr - ptr, which returns how many elements are between the two.
+        if lhs.get_type().is_ptr() && rhs.get_type().is_ptr() {
+            lhs = Node::Sub {
+                lhs: Box::new(lhs),
+                rhs: Box::new(rhs),
+            };
+            return Some(Node::Div {
+                lhs: Box::new(lhs.clone()),
+                rhs: Box::new(Node::Num(lhs.get_type().get_size())),
+            });
+        }
+        self.tokenizer.error_tok(
+            self.tokenizer.cur_token(),
+            "invalid operands"
+        );
+
+        None
+    }
+
     // add = mul ("+" mul | "-" mul)*
     fn add(&mut self) -> Option<Node> {
         let mut node = self.mul().unwrap();
 
         loop {
             if self.tokenizer.consume("+") {
-                let mut rhs = self.mul().unwrap();
-
-                // num + num
-                if node.get_type().is_integer() && rhs.get_type().is_integer() {
-                    node = Node::Add {
-                        lhs: Box::new(node),
-                        rhs: Box::new(rhs),
-                    };
-
-                    continue;
-                }
-
-                if node.get_type().is_ptr() && rhs.get_type().is_ptr() {
-                    self.tokenizer.error_tok(
-                        self.tokenizer.cur_token(),
-                        "invalid operands"
-                    );
-                }
-
-                // Canonicalize `num + ptr` to `ptr + num`.
-                if !node.get_type().is_ptr() && rhs.get_type().is_ptr() {
-                    let tmp = node;
-                    node = rhs;
-                    rhs = tmp;
-                }
-
-                rhs = Node::Mul {
-                    lhs: Box::new(rhs),
-                    rhs: Box::new(Node::Num(node.get_type().get_base().get_size())),
-                };
-                node = Node::Add {
-                    lhs: Box::new(node),
-                    rhs: Box::new(rhs),
-                };
-
+                let rhs = self.mul().unwrap().clone();
+                node = self.new_add(node, rhs).unwrap();
                 continue;
             }
             
             if self.tokenizer.consume("-") {
-                let mut rhs = self.mul().unwrap();
-
-                // num - num
-                if node.get_type().is_integer() && rhs.get_type().is_integer() {
-                    node = Node::Sub {
-                        lhs: Box::new(node),
-                        rhs: Box::new(rhs),
-                    };
-
-                    continue;
-                }
-
-                // ptr - num
-                if node.get_type().is_ptr() && rhs.get_type().is_integer() {
-                    rhs = Node::Mul {
-                        lhs: Box::new(rhs),
-                        rhs: Box::new(Node::Num(node.get_type().get_size())),
-                    };
-                    node = Node::Sub {
-                        lhs: Box::new(node),
-                        rhs: Box::new(rhs),
-                    };
-
-                    continue;
-                }
-
-                // ptr - ptr, which returns how many elements are between the two.
-                if node.get_type().is_ptr() && rhs.get_type().is_ptr() {
-                    node = Node::Sub {
-                        lhs: Box::new(node),
-                        rhs: Box::new(rhs),
-                    };
-                    node = Node::Div {
-                        lhs: Box::new(node.clone()),
-                        rhs: Box::new(Node::Num(node.get_type().get_size())),
-                    };
-
-                    continue;
-                }
-
-                self.tokenizer.error_tok(
-                    self.tokenizer.cur_token(),
-                    "invalid operands"
-                );
+                let rhs = self.mul().unwrap().clone();
+                node = self.new_sub(node, rhs).unwrap();
+                continue;
             }
 
             return Some(node);
@@ -683,7 +682,7 @@ impl Parser {
     }
 
     // unary = ("+" | "-" | "*" | "&") unary
-    //       | primary
+    //       | postfix
     fn unary(&mut self) -> Option<Node> {
         if self.tokenizer.consume("+") {
             return self.unary();
@@ -701,7 +700,21 @@ impl Parser {
             return Some(Node::Deref(Box::new(self.unary().unwrap())));
         }
 
-        self.primary()
+        self.postfix()
+    }
+
+    // postfix = primary ("[" expr "]")*
+    fn postfix(&mut self) -> Option<Node> {
+        let mut node = self.primary().unwrap();
+
+        while self.tokenizer.consume("[") {
+            // x[y] is short for *(x+y)
+            let idx = self.expr().unwrap();
+            self.tokenizer.skip("]");
+            node = Node::Deref(Box::new(self.new_add(node, idx).unwrap()));
+        }
+
+        Some(node)
     }
 
     // function-definition = declspec declarator "{" compound-stmt
