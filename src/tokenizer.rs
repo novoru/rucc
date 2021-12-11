@@ -228,20 +228,40 @@ impl Tokenizer {
         false
     }
 
+    fn read_escape_char(&self, ch: char) -> char {
+        match ch {
+            'a' =>  '\x07',
+            'b' =>  '\x08',
+            't' =>  '\t',
+            'n' =>  '\n',
+            'v' =>  '\x0B',
+            'f' =>  '\x0C',
+            'r' =>  '\r',
+            // [GNU] \e for the ASCII escape character is a GNU C extension.
+            'e' =>  '\x1B',
+            _   =>  ch,
+        }
+    }
+
     fn read_string_literal(&mut self) {
         self.read_char();
         let start = self.pos;
+        let mut s = String::new();
+
         while self.ch != '"' {
-            self.read_char();
-            if self.ch == '\n' || self.ch == '\0' {
-                self.error_at(start, "unclosed string literal");
+            if self.ch == '\\' {
+                self.read_char();
+                s.push(self.read_escape_char(self.ch));
+                self.read_char();
+            } else {
+                s.push(self.ch);
+                self.read_char();
             }
         }
         self.read_char();
-        let mut literal = self.input[start..self.pos-1].to_string();
-        literal.push('\0');
+        s.push('\0');
         self.tokens.push(Token::new_str(
-            start, &literal, self.pos as u32 - start as u32
+            start, &s, s.len() as u32
         ));
     }
 
@@ -345,6 +365,27 @@ fn test_string_literal() {
                 base:   Box::new(ty_char(None)),
                 size:   4,
                 len:    4,
+            }),
+        }
+    );
+}
+
+#[test]
+fn test_escape_char() {
+    let mut tokenizer = Tokenizer::new(" \"\\\n\" ");
+    tokenizer.tokenize();
+    assert_eq!(
+        tokenizer.next_token().unwrap(),
+        Token {
+            kind:       TokenKind::Str,
+            loc:        2,
+            val:        None,
+            literal:    "\n\0".to_string(),
+            ty:         Some(Type::Array {
+                name:   None,
+                base:   Box::new(ty_char(None)),
+                size:   2,
+                len:    2,
             }),
         }
     );
