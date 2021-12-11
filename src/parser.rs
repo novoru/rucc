@@ -611,8 +611,7 @@ impl Parser {
         Some(Node::FuncCall { name, args })
     }
 
-    // primary = "(" expr ")" | ident args? | num
-    // args = "(" ")"
+    // primary = "(" expr ")" | "sizeof" unary | ident args? | num
     fn primary(&mut self) -> Option<Node> {
         if self.tokenizer.consume("(") {
             let node = self.expr().unwrap();
@@ -621,6 +620,11 @@ impl Parser {
         }
 
         let token = self.tokenizer.cur_token().clone();
+
+        if self.tokenizer.consume("sizeof") {
+            let node = self.unary().unwrap();
+            return Some(Node::Num(node.get_type().get_size()));
+        }
 
         if token.kind == TokenKind::Ident {
             // Function call
