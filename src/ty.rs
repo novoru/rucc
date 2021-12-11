@@ -20,8 +20,9 @@ impl Type {
 
     pub fn is_ptr(&self) -> bool {
         match self {
-            Type::Ptr {..}  =>  true,
-            _               =>  false,
+            Type::Ptr {..}      |
+            Type::Array {..}    =>  true,
+            _                   =>  false,
         }
     }
 
@@ -49,6 +50,14 @@ impl Type {
             Type::Ptr { name,.. }       |
             Type::Function { name, .. } |
             Type::Array { name, .. }    =>  *name = Some(s),
+        }
+    }
+
+    pub fn get_base(&mut self) -> Type {
+        match self {
+            Type::Ptr { base, .. }  |
+            Type::Array {base, .. } =>  *base.clone(),
+            _   => panic!("dont have the base field: {:?}", self),
         }
     }
 }

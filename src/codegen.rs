@@ -1,6 +1,7 @@
 use std::rc::Rc;
 use crate::util::error;
 use crate::parser::Node;
+use crate::ty::Type;
 
 static ARGREG: &'static [&str] = &["%rdi", "%rsi", "%rdx", "%rcx", "%r8", "%r9"];
 
@@ -24,12 +25,26 @@ impl CodeGenerator {
         c
     }
 
-    fn push(&mut self, ) {
+    fn push(&self, ) {
         println!("  push %rax");
     }
 
-    fn pop(&mut self, arg: &str) {
+    fn pop(&self, arg: &str) {
         println!("  pop {}", arg);
+    }
+    
+    // Load a value from where %rax is pointing to.
+    fn load(&self, ty: Type) {
+        if let Type::Array { .. } = ty {
+            return;
+        }
+
+        println!("  mov (%rax), %rax");
+    }
+
+    fn store(&self) {
+        self.pop("%rdi");
+        println!("  mov %rax, (%rdi)");
     }
 
     // Compute the absolute address of a given node.
@@ -129,7 +144,7 @@ impl CodeGenerator {
             },
             Node::Deref (expr)  =>  {
                 self.gen_expr(expr);
-                println!("  mov (%rax), %rax");
+                self.load(node.get_type().clone());
             },
             Node::Addr (expr)   =>  {
                 self.gen_addr(expr);
@@ -138,12 +153,11 @@ impl CodeGenerator {
                 self.gen_addr(lhs);
                 self.push();
                 self.gen_expr(rhs);
-                self.pop("%rdi");
-                println!("  mov %rax, (%rdi)");
+                self.store();
             },
-            Node::Var {..}   =>  {
+            Node::Var { ty, .. }    =>  {
                 self.gen_addr(node);
-                println!("  mov (%rax), %rax");
+                self.load(ty.clone());
             },
             Node::FuncCall { name, args } =>  {
                 for arg in args {
@@ -236,7 +250,7 @@ impl CodeGenerator {
                 
                 // Save passed-by-register arguments to the stack
                 let mut i = 0;
-                for param in &params.borrow().objs {
+                for param in &params.objs {
                     println!("  mov {}, {}(%rbp)", ARGREG[i], -(param.offset as i32));
                     i += 1;
                 }

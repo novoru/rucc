@@ -36,7 +36,7 @@ pub enum Node {
     FuncCall    { name: String, args: Vec<Box<Node>> }, // Function call
     Function    {                                       // Function definition
                     name:   String,
-                    params: Rc<RefCell<Scope>>,
+                    params: Scope,
                     body:   Vec<Box<Node>>,
                     locals: Rc<RefCell<Scope>>,
                     ret_ty: Option<Type>,
@@ -46,7 +46,7 @@ pub enum Node {
 }
 
 impl Node {
-    pub fn get_type(&mut self) -> Type {
+    pub fn get_type(&self) -> Type {
         match self {
             Node::Add { lhs, .. }   =>  lhs.get_type(),
             Node::Sub { lhs, rhs }  =>  {
@@ -59,20 +59,35 @@ impl Node {
             },
             Node::Mul { lhs, .. }   |
             Node::Div { lhs, .. }   =>  lhs.get_type(),
-            Node::Neg (expr)    =>  expr.get_type(),
-            Node::Eq { .. } |
-            Node::Ne { .. } |
-            Node::Lt { .. } |
-            Node::Le { .. } =>   ty_int(None),
-            Node::Assign { lhs, .. }    =>  lhs.get_type(),
+            Node::Neg (expr)        =>  expr.get_type(),
+            Node::Eq { .. }         |
+            Node::Ne { .. }         |
+            Node::Lt { .. }         |
+            Node::Le { .. }         =>   ty_int(None),
+            Node::Assign { lhs, .. }    =>  {
+                let ty = lhs.get_type();
+                if let Type::Array { .. } = ty {
+                    panic!("not an lvalue");
+                }
+
+                ty
+            }
             Node::Addr (expr)   =>  {
-                Type::Ptr{ name: None, base: Box::new(expr.get_type()), size: 8 }
+                let ty = expr.get_type();
+                match ty {
+                    Type::Array { base, .. }    =>  {
+                        Type::Ptr{ name: None, base: Box::new(*base.clone()), size: 8 }
+                    },
+                    _   =>  Type::Ptr{ name: None, base: Box::new(ty.clone()), size: 8 },
+                }
+                
             },
             Node::Deref (expr)  =>  {
-                if let Type::Ptr{ name:_, base, size:_ } = expr.get_type() {
-                    *base
-                } else {
-                    panic!("invalid pointer dereference")
+                let ty = expr.get_type();
+                match ty {
+                    Type::Ptr   { base, .. }    |
+                    Type::Array { base, .. }    =>  *base,
+                    _   =>  panic!("invalid pointer dereference"),
                 }
             },
             Node::Var { name:_, ty }    =>  ty.clone(),
@@ -89,7 +104,7 @@ pub struct Obj {
     pub ty:     Type,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Scope {
     parent:     Option<Rc<RefCell<Scope>>>,
     pub objs:   Vec<Obj>,
@@ -107,7 +122,8 @@ impl Scope {
             obj.offset += ty.get_size();
             offset += obj.ty.get_size();
         }
-        let obj = Obj { offset: 8, ty: ty.clone() };
+        let size = ty.get_size();
+        let obj = Obj { offset: size, ty: ty.clone() };
         self.objs.push(obj);
         self.stack_size = self.align_to(offset, 16);
     }
@@ -169,37 +185,61 @@ impl Parser {
         ty_int(None)
     }
 
-    // type-suffix = ("(" func-params? ")")?
-    // func-params = param ("," param)*
+    // func-params = (param ("," param)*)? ")"
     // param       = declspec declarator
+    fn func_params(&mut self, ty: Type) -> Type {
+        let token = self.tokenizer.cur_token().clone();
+        self.tokenizer.next_token();
+        self.tokenizer.next_token();
+        let mut params = Vec::new();
+        while !self.tokenizer.consume(")") {
+            if params.len() != 0 {
+                self.tokenizer.skip(",");
+            }
+
+            let basety = self.declspec();
+            let ty = self.declarator(basety);
+            params.push(ty);
+        }
+        self.new_param_lvars(&params);
+
+        Type::Function {
+            name:   Some(token.literal.to_string()),
+            params: Some(params),
+            ret_ty: Box::new(ty),
+        }
+    }
+
+    // type-suffix = "'" func-pramas
+    //             | "[" num "]"
+    //             | ε
     fn type_suffix(&mut self, ty: Type) -> Type {
         let ty = ty.clone();
         let token = self.tokenizer.cur_token().clone();
 
         if self.tokenizer.peek_token("(") {
+            return self.func_params(ty);
+        }
+
+        if self.tokenizer.peek_token("[") {
             self.tokenizer.next_token();
             self.tokenizer.next_token();
+            let sz = if let Some(val) = self.tokenizer.next_token().unwrap().val {
+                val
+            } else {
+                self.tokenizer.error_tok(self.tokenizer.cur_token(), "expected a number");
+                panic!();
+            };
+            self.tokenizer.skip("]");
 
-            let mut params = Vec::new();
-
-            while !self.tokenizer.consume(")") {
-                if params.len() != 0 {
-                    self.tokenizer.skip(",");
-                }
-
-                let basety = self.declspec();
-                let ty = self.declarator(basety);
-                params.push(ty);
-            }
-
-            self.new_param_lvars(&params);
-
-            return Type::Function {
-                name:   Some(token.literal.to_string()),
-                params: Some(params),
-                ret_ty: Box::new(ty),
+            return Type::Array {
+                name:   Some(token.literal.clone()),
+                base:   Box::new(ty.clone()),
+                size:   ty.get_size()*sz,
+                len:    sz,
             };
         }
+
         self.tokenizer.next_token();
 
         ty
@@ -211,8 +251,8 @@ impl Parser {
         while self.tokenizer.consume("*") {
             ty = Type::Ptr {
                 name: None,
-                base: Box::new(ty),
-                size: 8,
+                base: Box::new(ty.clone()),
+                size: ty.get_size(),
             };
         }
          
@@ -490,7 +530,7 @@ impl Parser {
 
                 rhs = Node::Mul {
                     lhs: Box::new(rhs),
-                    rhs: Box::new(Node::Num(8)),
+                    rhs: Box::new(Node::Num(node.get_type().get_size())),
                 };
                 node = Node::Add {
                     lhs: Box::new(node),
@@ -517,7 +557,7 @@ impl Parser {
                 if node.get_type().is_ptr() && rhs.get_type().is_integer() {
                     rhs = Node::Mul {
                         lhs: Box::new(rhs),
-                        rhs: Box::new(Node::Num(8)),
+                        rhs: Box::new(Node::Num(node.get_type().get_size())),
                     };
                     node = Node::Sub {
                         lhs: Box::new(node),
@@ -534,8 +574,8 @@ impl Parser {
                         rhs: Box::new(rhs),
                     };
                     node = Node::Div {
-                        lhs: Box::new(node),
-                        rhs: Box::new(Node::Num(8)),
+                        lhs: Box::new(node.clone()),
+                        rhs: Box::new(Node::Num(node.get_type().get_size())),
                     };
 
                     continue;
@@ -676,7 +716,11 @@ impl Parser {
         let ty = self.declarator(basety.clone());
         let name = ty.get_name().unwrap();
 
-        let params = Rc::clone(&self.scope);
+        let params = Scope {
+            parent: None,
+            objs:   self.scope.borrow().objs.clone(),
+            stack_size: 0,
+        };
 
         self.tokenizer.skip("{");
         let mut body = Vec::new();
