@@ -245,6 +245,21 @@ impl Tokenizer {
             return std::char::from_u32(c).unwrap();
         }
 
+        if self.ch == 'x' {
+            self.read_char();
+            if !self.ch.is_digit(16) {
+                self.error_at(self.pos, "invalid hex escape sequence");
+            }
+
+            let mut c = 0;
+            while self.ch.is_digit(16) {
+                c = (c << 4) + self.ch.to_digit(16).unwrap();
+                self.read_char();
+            }
+
+            return std::char::from_u32(c).unwrap();
+        }
+
         let ch = match self.ch {
             'a' =>  '\x07',
             'b' =>  '\x08',
@@ -280,7 +295,7 @@ impl Tokenizer {
         self.read_char();
         s.push('\0');
         self.tokens.push(Token::new_str(
-            start, &s, s.len() as u32
+            start, &s, s.chars().count() as u32
         ));
     }
 
@@ -421,6 +436,27 @@ fn test_octal_string() {
             loc:        2,
             val:        None,
             literal:    "\0\0".to_string(),
+            ty:         Some(Type::Array {
+                name:   None,
+                base:   Box::new(ty_char(None)),
+                size:   2,
+                len:    2,
+            }),
+        }
+    );
+}
+
+#[test]
+fn test_hex_string() {
+    let mut tokenizer = Tokenizer::new(" \"\\xA5\" ");
+    tokenizer.tokenize();
+    assert_eq!(
+        tokenizer.next_token().unwrap(),
+        Token {
+            kind:       TokenKind::Str,
+            loc:        2,
+            val:        None,
+            literal:    "¥\0".to_string(),
             ty:         Some(Type::Array {
                 name:   None,
                 base:   Box::new(ty_char(None)),

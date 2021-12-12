@@ -105,7 +105,7 @@ impl Node {
 pub struct Obj {
     pub offset:     u32,
     pub ty:         Type,
-    pub init_data:  Option<Vec<u8>> // Global variable
+    pub init_data:  Option<Vec<char>> // Global variable
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -120,14 +120,14 @@ impl Scope {
         (n + align - 1) / align * align
     }
 
-    pub fn add_var(&mut self, ty: &Type, int_data: Option<Vec<u8>>) -> Obj {
+    pub fn add_var(&mut self, ty: &Type, init_data: Option<Vec<char>>) -> Obj {
         let mut offset = ty.get_size();
         for obj in &mut self.objs {
             obj.offset += ty.get_size();
             offset += obj.ty.get_size();
         }
         let size = ty.get_size();
-        let obj = Obj { offset: size, ty: ty.clone(), init_data: int_data };
+        let obj = Obj { offset: size, ty: ty.clone(), init_data: init_data };
         self.objs.push(obj.clone());
         self.stack_size = self.align_to(offset, 16);
 
@@ -198,7 +198,7 @@ impl Parser {
     fn new_anon_gvar(&mut self, s: String, ty: Type) -> Obj {
         let mut ty = ty.clone();
         ty.set_name(self.new_unique_name());
-        self.global.borrow_mut().add_var(&ty, Some(s.bytes().collect::<Vec<u8>>()))
+        self.global.borrow_mut().add_var(&ty, Some(s.chars().collect()))
     }
 
     fn new_string_literal(&mut self, s: String, ty: Type) -> Obj {

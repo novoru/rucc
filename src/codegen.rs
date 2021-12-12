@@ -312,7 +312,7 @@ impl CodeGenerator {
 
             if let Some(init_data) = &var.init_data {
                 for ch in init_data {
-                    println!("  .byte {}", ch);
+                    println!("  .byte {}", *ch as u32);
                 }
             } else {
                 println!("  .zero {}", var.ty.get_size());
