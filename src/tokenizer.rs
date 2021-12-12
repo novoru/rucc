@@ -324,8 +324,34 @@ impl Tokenizer {
     }
 
     fn error_at(&self, loc: usize, s: &str) {
-        eprintln!("{}", &self.input);
-        eprint!("{:indent$}^ ", "", indent=loc);
+        let mut line = 0;
+
+        for (i, ch) in self.input.chars().rev().skip(self.input.len()-loc).enumerate() {
+            dbg!((i, ch));
+            if ch =='\n' && i != 0 {
+                line = i + 1;
+                break;
+            }
+        }
+
+        let mut end = 0;
+
+        for (i, ch) in self.input.chars().skip(loc).enumerate() {
+            dbg!((i, ch));
+            if ch == '\n' || ch == '\0' {
+                end = i + loc;
+                break;
+            }
+        }
+
+        dbg!(&self.input);
+        dbg!(line);
+        dbg!(loc);
+        dbg!(end);
+        dbg!(self.input[line..end].to_string());
+
+        eprintln!("{}", self.input[line..end].to_string().replace("\n", ""));
+        eprint!("{:indent$}^ ", "", indent=loc-line);
         eprintln!("{}", s);
         process::exit(1);
     }
