@@ -188,6 +188,9 @@ impl CodeGenerator {
                 self.gen_addr(node);
                 self.load(&ty);
             },
+            Node::StmtExpr (body)   =>  {
+                self.gen_stmt(body);
+            },
             Node::FuncCall { name, args } =>  {
                 for arg in args {
                     self.gen_expr(arg);

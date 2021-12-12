@@ -32,6 +32,7 @@ pub enum Node {
     },
     Block       ( Vec<Box<Node>> ),                     // { ... }
     ExprStmt    ( Box<Node> ),                          // Expression statement
+    StmtExpr    ( Box<Node> ),                          // Statement Expression
     Var         { name: String, ty: Type },             // Variable
     FuncCall    { name: String, args: Vec<Box<Node>> }, // Function call
     Function    {                                       // Function definition
@@ -92,6 +93,15 @@ impl Node {
                     Type::Array { base, .. }    =>  *base,
                     _   =>  panic!("invalid pointer dereference"),
                 }
+            },
+            Node::ExprStmt (expr)   => expr.get_type(),
+            Node::StmtExpr (body)   => {
+                if let Node::Block (stmts) = &**body {
+                    if let Some(expr) = stmts.last() {
+                        return expr.get_type();
+                    }
+                }
+                panic!("statement expression returning void is not supported");
             },
             Node::Var { name:_, ty }    =>  ty.clone(),
             Node::FuncCall { .. }       |
@@ -653,8 +663,22 @@ impl Parser {
         Some(Node::FuncCall { name, args })
     }
 
-    // primary = "(" expr ")" | "sizeof" unary | ident args? | str | num
+    // primary = "(" "{" compound-stmt "}" ")"
+    //         | "(" expr ")"
+    //         | "sizeof" unary
+    //         | ident args?
+    //         | str
+    //         | num
     fn primary(&mut self) -> Option<Node> {
+        if self.tokenizer.cur_token().equal("(") && self.tokenizer.peek_token("{") {
+            self.tokenizer.next_token();
+            self.tokenizer.next_token();
+            let node = Node::StmtExpr (Box::new(self.compound_stmt().unwrap()));
+
+            self.tokenizer.skip(")");
+            return Some(node);
+        }
+
         if self.tokenizer.consume("(") {
             let node = self.expr().unwrap();
             self.tokenizer.skip(")");
