@@ -66,9 +66,9 @@ impl CodeGenerator {
     // It's an error if a given node does not reside in memory.
     fn gen_addr(&mut self, node: &Node) {
         match node {
-            Node::Var { name, ty:_ }    =>  {
+            Node::Var { name, .. }  =>  {
                 if let Some(func) = &self.cur_func {
-                    if let Node::Function { locals,.. } = &**func {
+                    if let Node::Function { locals, .. } = &**func {
                         for obj in &locals.borrow().objs {
                             if &obj.ty.get_name().unwrap() == name {
                                 println!("  lea {}(%rbp), %rax", -(obj.offset as i32));
@@ -92,7 +92,7 @@ impl CodeGenerator {
                     }
                 }
             },
-            Node::Deref (expr)   =>  {
+            Node::Deref (expr, ..)  =>  {
                 self.gen_expr(expr);
             },
             _   =>  error("not an lvalue"),
@@ -101,29 +101,29 @@ impl CodeGenerator {
 
     fn gen_expr(&mut self, node: &Node) {
         match node {
-            Node::Num (val)   => println!("  mov ${}, %rax", val),
-            Node::Add { lhs, rhs }  =>  {
+            Node::Num (val, ..)         => println!("  mov ${}, %rax", val),
+            Node::Add { lhs, rhs, .. }  =>  {
                 self.gen_expr(rhs);
                 self.push();
                 self.gen_expr(lhs);
                 self.pop("%rdi");
                 println!("  add %rdi, %rax");
             },
-            Node::Sub { lhs, rhs }  =>  {
+            Node::Sub { lhs, rhs, .. }  =>  {
                 self.gen_expr(rhs);
                 self.push();
                 self.gen_expr(lhs);
                 self.pop("%rdi");
                 println!("  sub %rdi, %rax");
             },
-            Node::Mul { lhs, rhs }  =>  {
+            Node::Mul { lhs, rhs, .. }  =>  {
                 self.gen_expr(rhs);
                 self.push();
                 self.gen_expr(lhs);
                 self.pop("%rdi");
                 println!("  imul %rdi, %rax");
             },
-            Node::Div { lhs, rhs }  =>  {
+            Node::Div { lhs, rhs, .. }  =>  {
                 self.gen_expr(rhs);
                 self.push();
                 self.gen_expr(lhs);
@@ -131,11 +131,11 @@ impl CodeGenerator {
                 println!("  cqo");
                 println!("  idiv %rdi");
             },
-            Node::Neg (expr)    =>   {
+            Node::Neg (expr, ..)    =>   {
                 self.gen_expr(expr);
                 println!("  neg %rax");
             },
-            Node::Eq { lhs, rhs }   =>  {
+            Node::Eq { lhs, rhs, .. }   =>  {
                 self.gen_expr(rhs);
                 self.push();
                 self.gen_expr(lhs);
@@ -144,7 +144,7 @@ impl CodeGenerator {
                 println!("  sete %al");
                 println!("  movzb %al, %rax");
             },
-            Node::Ne { lhs, rhs }   =>  {
+            Node::Ne { lhs, rhs, .. }   =>  {
                 self.gen_expr(rhs);
                 self.push();
                 self.gen_expr(lhs);
@@ -153,7 +153,7 @@ impl CodeGenerator {
                 println!("  setne %al");
                 println!("  movzb %al, %rax");
             },
-            Node::Lt { lhs, rhs }   =>  {
+            Node::Lt { lhs, rhs, .. }   =>  {
                 self.gen_expr(rhs);
                 self.push();
                 self.gen_expr(lhs);
@@ -162,7 +162,7 @@ impl CodeGenerator {
                 println!("  setl %al");
                 println!("  movzb %al, %rax");
             },
-            Node::Le { lhs, rhs }   =>  {
+            Node::Le { lhs, rhs, .. }   =>  {
                 self.gen_expr(rhs);
                 self.push();
                 self.gen_expr(lhs);
@@ -171,14 +171,14 @@ impl CodeGenerator {
                 println!("  setle %al");
                 println!("  movzb %al, %rax");
             },
-            Node::Deref (expr)  =>  {
+            Node::Deref (expr, ..)  =>  {
                 self.gen_expr(expr);
                 self.load(&node.get_type());
             },
-            Node::Addr (expr)   =>  {
+            Node::Addr (expr, ..)   =>  {
                 self.gen_addr(expr);
             },
-            Node::Assign { lhs, rhs }   =>  {
+            Node::Assign { lhs, rhs, .. }   =>  {
                 self.gen_addr(lhs);
                 self.push();
                 self.gen_expr(rhs);
@@ -188,10 +188,10 @@ impl CodeGenerator {
                 self.gen_addr(node);
                 self.load(&ty);
             },
-            Node::StmtExpr (body)   =>  {
+            Node::StmtExpr (body, ..)   =>  {
                 self.gen_stmt(body);
             },
-            Node::FuncCall { name, args } =>  {
+            Node::FuncCall { name, args, .. } =>  {
                 for arg in args {
                     self.gen_expr(arg);
                     self.push();
@@ -210,7 +210,7 @@ impl CodeGenerator {
 
     fn gen_stmt(&mut self, node: &Node) {
         match node {
-            Node::If { cond, then, els }    =>  {
+            Node::If { cond, then, els, .. }    =>  {
                 let c = self.count();
 
                 self.gen_expr(cond);
@@ -224,7 +224,7 @@ impl CodeGenerator {
                 };
                 println!(".L.end.{}:", c);
             },
-            Node::For { init, cond, inc, body } =>  {
+            Node::For { init, cond, inc, body, .. } =>  {
                 let c = self.count();
 
                 if let Some(stmt) = init {
@@ -247,12 +247,12 @@ impl CodeGenerator {
                 println!("  jmp .L.begin.{}", c);
                 println!(".L.end.{}:", c);
             },
-            Node::Block (stmts)  =>  {
+            Node::Block (stmts, ..) =>  {
                 for stmt in stmts {
                     self.gen_stmt(stmt);
                 }
             },
-            Node::Return (expr) =>  {
+            Node::Return (expr, ..) =>  {
                 self.gen_expr(expr);
                 if let Some(func) = &self.cur_func {
                     if let Node::Function{ name, .. } = &**func {
@@ -260,7 +260,7 @@ impl CodeGenerator {
                     }
                 }
             },
-            Node::ExprStmt (expr) => {
+            Node::ExprStmt (expr, ..)   => {
                 self.gen_expr(&expr);
             }
             _   => error(&format!("invalid statement: {:?}", node)),
@@ -325,7 +325,7 @@ impl CodeGenerator {
 
     fn gen_prog(&mut self, prog: &mut Node) {
         match prog {
-            Node::Program {data, ref mut text}  =>  {
+            Node::Program { data, ref mut text, .. }    =>  {
                 self.emit_data(&data.borrow().objs);
                 for func in text {
                     self.gen_func(func);

@@ -6,54 +6,58 @@ use crate::ty::*;
 // Ast node type
 #[derive(Debug, Clone, PartialEq)]
 pub enum Node {
-    Add         { lhs: Box<Node>, rhs: Box<Node> },     // +
-    Sub         { lhs: Box<Node>, rhs: Box<Node> },     // -
-    Mul         { lhs: Box<Node>, rhs: Box<Node> },     // *
-    Div         { lhs: Box<Node>, rhs: Box<Node> },     // /
-    Neg         ( Box<Node> ),                          // unary -
-    Eq          { lhs: Box<Node>, rhs: Box<Node> },     // ==
-    Ne          { lhs: Box<Node>, rhs: Box<Node> },     // !=
-    Lt          { lhs: Box<Node>, rhs: Box<Node> },     // <
-    Le          { lhs: Box<Node>, rhs: Box<Node> },     // <=
-    Assign      { lhs: Box<Node>, rhs: Box<Node> },     // =
-    Addr        ( Box<Node> ),                          // unary &
-    Deref       ( Box<Node> ),                          // unary *
-    Return      ( Box<Node> ),                          // "return"
+    Add         { lhs: Box<Node>, rhs: Box<Node>, token: Token },     // +
+    Sub         { lhs: Box<Node>, rhs: Box<Node>, token: Token },     // -
+    Mul         { lhs: Box<Node>, rhs: Box<Node>, token: Token },     // *
+    Div         { lhs: Box<Node>, rhs: Box<Node>, token: Token },     // /
+    Neg         ( Box<Node>, Token ),                   // unary -
+    Eq          { lhs: Box<Node>, rhs: Box<Node>, token: Token },     // ==
+    Ne          { lhs: Box<Node>, rhs: Box<Node>, token: Token },     // !=
+    Lt          { lhs: Box<Node>, rhs: Box<Node>, token: Token },     // <
+    Le          { lhs: Box<Node>, rhs: Box<Node>, token: Token },     // <=
+    Assign      { lhs: Box<Node>, rhs: Box<Node>, token: Token },     // =
+    Addr        ( Box<Node>, Token ),                   // unary &
+    Deref       ( Box<Node>, Token ),                   // unary *
+    Return      ( Box<Node>, Token ),                   // "return"
     If          {                                       // "if"
         cond:   Box<Node>,
         then:   Box<Node>,
         els:    Option<Box<Node>>,
+        token:  Token,
     },
     For         {                                       // "for" of "while"
         init:   Option<Box<Node>>,
         cond:   Option<Box<Node>>,
         inc:    Option<Box<Node>>,
         body:   Box<Node>,
+        token:  Token,
     },
-    Block       ( Vec<Box<Node>> ),                     // { ... }
-    ExprStmt    ( Box<Node> ),                          // Expression statement
-    StmtExpr    ( Box<Node> ),                          // Statement Expression
-    Var         { name: String, ty: Type },             // Variable
-    FuncCall    { name: String, args: Vec<Box<Node>> }, // Function call
+    Block       ( Vec<Box<Node>>, Token ),              // { ... }
+    ExprStmt    ( Box<Node>, Token ),                   // Expression statement
+    StmtExpr    ( Box<Node>, Token ),                   // Statement Expression
+    Var         { name: String, ty: Type, token: Token },             // Variable
+    FuncCall    { name: String, args: Vec<Box<Node>>, token: Token }, // Function call
     Function    {                                       // Function definition
         name:   String,
         params: Scope,
         body:   Vec<Box<Node>>,
         locals: Rc<RefCell<Scope>>,
         ret_ty: Option<Type>,
+        token:  Token,
     },
     Program     {                                       // Program
         data: Rc<RefCell<Scope>>,
-        text: Vec<Box<Node>>
+        text: Vec<Box<Node>>,
+        token:  Token,
     },
-    Num         ( u32 ),                                // Integer
+    Num         ( u32, Token ),                         // Integer
 }
 
 impl Node {
     pub fn get_type(&self) -> Type {
         match self {
-            Node::Add { lhs, .. }   =>  lhs.get_type(),
-            Node::Sub { lhs, rhs }  =>  {
+            Node::Add { lhs, .. }       =>  lhs.get_type(),
+            Node::Sub { lhs, rhs, .. }  =>  {
                 // ptr - ptr, which returns how many elements are between the two.
                 if lhs.get_type().is_ptr() && rhs.get_type().is_ptr() {
                     ty_int(None)
@@ -63,7 +67,7 @@ impl Node {
             },
             Node::Mul { lhs, .. }   |
             Node::Div { lhs, .. }   =>  lhs.get_type(),
-            Node::Neg (expr)        =>  expr.get_type(),
+            Node::Neg (expr, ..)    =>  expr.get_type(),
             Node::Eq { .. }         |
             Node::Ne { .. }         |
             Node::Lt { .. }         |
@@ -76,7 +80,7 @@ impl Node {
 
                 ty
             }
-            Node::Addr (expr)   =>  {
+            Node::Addr (expr, ..)   =>  {
                 let ty = expr.get_type();
                 match ty {
                     Type::Array { base, .. }    =>  {
@@ -86,7 +90,7 @@ impl Node {
                 }
                 
             },
-            Node::Deref (expr)  =>  {
+            Node::Deref (expr, ..)  =>  {
                 let ty = expr.get_type();
                 match ty {
                     Type::Ptr   { base, .. }    |
@@ -94,19 +98,47 @@ impl Node {
                     _   =>  panic!("invalid pointer dereference"),
                 }
             },
-            Node::ExprStmt (expr)   => expr.get_type(),
-            Node::StmtExpr (body)   => {
-                if let Node::Block (stmts) = &**body {
-                    if let Some(expr) = stmts.last() {
+            Node::ExprStmt (expr, ..)   => expr.get_type(),
+            Node::StmtExpr (body, ..)   => {
+                if let Node::Block (stmts, ..)  = &**body {
+                    if let Some(expr)   = stmts.last() {
                         return expr.get_type();
                     }
                 }
                 panic!("statement expression returning void is not supported");
             },
-            Node::Var { name:_, ty }    =>  ty.clone(),
+            Node::Var { ty, .. }        =>  ty.clone(),
             Node::FuncCall { .. }       |
             Node::Num (..)              =>  ty_int(None),
             _   =>  panic!("not an expression: {:?}", &self),
+        }
+    }
+
+    pub fn get_token(&self) -> &Token {
+        match self {
+            Node::Add       { token, .. }   |
+            Node::Sub       { token, .. }   |
+            Node::Mul       { token, .. }   |
+            Node::Div       { token, .. }   |
+            Node::Neg       ( .., token )   |
+            Node::Eq        { token, .. }   |
+            Node::Ne        { token, .. }   |
+            Node::Lt        { token, .. }   |
+            Node::Le        { token, .. }   |
+            Node::Assign    { token, .. }   |
+            Node::Addr      ( .., token )   |
+            Node::Deref     ( .., token )   |
+            Node::Return    ( .., token )   |
+            Node::If        { token, .. }   |
+            Node::For       { token, .. }   |
+            Node::Block     ( .., token )   |
+            Node::ExprStmt  ( .., token )   |
+            Node::StmtExpr  ( .., token )   |
+            Node::Var       { token, .. }   |
+            Node::FuncCall  { token, .. }   |
+            Node::Function  { token, .. }   |
+            Node::Program   { token, .. }   |
+            Node::Num       ( .., token )   =>  token,
         }
     }
 }
@@ -317,6 +349,7 @@ impl Parser {
 
     // declaration = declspec (declarator ("=" expr)? ("," declarator ("=" expr)?)*)? ";"
     fn declaration(&mut self) -> Option<Node> {
+        let tok_ty = self.tokenizer.cur_token().clone();
         let basety = self.declspec();
         let mut decls = Vec::new();
 
@@ -328,6 +361,7 @@ impl Parser {
             }
             i += 1;
 
+            let tok_lhs = self.tokenizer.cur_token().clone();
             let ty = self.declarator(basety.clone());
             let name = ty.get_name().unwrap();
             self.new_lvar(&ty);
@@ -336,16 +370,28 @@ impl Parser {
                 continue;
             }
 
-            let lhs = Node::Var{ name, ty };
+            let lhs = Node::Var {
+                name,
+                ty,
+                token: tok_lhs.clone(),
+            };
+
             let rhs = self.assign().unwrap();
             let node = Node::Assign {
                 lhs: Box::new(lhs),
                 rhs: Box::new(rhs),
+                token: tok_lhs.clone(),
             };
-            decls.push(Box::new(Node::ExprStmt(Box::new(node))));
+            decls.push(Box::new(Node::ExprStmt(
+                Box::new(node),
+                tok_lhs.clone(),
+            )));
         }
 
-        Some(Node::Block(decls))
+        Some(Node::Block(
+            decls,
+            tok_ty,
+        ))
     }
 
     fn is_typename(&self, token: &Token) -> bool {
@@ -356,11 +402,15 @@ impl Parser {
     //      | "if" "(" expr ")" stmt ("else" stmt)?
     //      | "for" "(" expr-stmt expr? ";" expr?  ")" stmt
     //      | "while" "(" expr ")" stmt
-    //      | "{" compound-stmt
+    //      | compound-stmt
     //      | expr-stmt
     fn stmt(&mut self) -> Option<Node> {
+        let token = self.tokenizer.cur_token().clone();
         if self.tokenizer.consume("return") {
-            let node = Node::Return(Box::new(self.expr().unwrap()));
+            let node = Node::Return(
+                Box::new(self.expr().unwrap()),
+                token,
+            );
             self.tokenizer.skip(";");
             return Some(node);
         }
@@ -377,7 +427,12 @@ impl Parser {
                 None
             };
 
-            return Some(Node::If { cond, then, els });
+            return Some(Node::If {
+                cond,
+                then,
+                els,
+                token,
+             });
         }
 
         if self.tokenizer.consume("for") {
@@ -407,7 +462,13 @@ impl Parser {
 
             let body = Box::new(self.stmt().unwrap());
 
-            return Some(Node::For { init, cond, inc, body })
+            return Some(Node::For {
+                init,
+                cond,
+                inc,
+                body,
+                token,
+             })
         }
 
         if self.tokenizer.consume("while") {
@@ -422,18 +483,26 @@ impl Parser {
 
             let body = Box::new(self.stmt().unwrap());
 
-            return Some(Node::For { init: None, cond: cond, inc: None, body: body });
+            return Some(Node::For {
+                init: None,
+                cond,
+                inc: None,
+                body,
+                token,
+             });
         }
 
-        if self.tokenizer.consume("{") {
+        if token.equal("{") {
             return self.compound_stmt();
         }
 
         self.expr_stmt()
     }
 
-    // compound-stmt = (declaration | stmt)* "}"
+    // compound-stmt = "{" (declaration | stmt)* "}"
     fn compound_stmt(&mut self) -> Option<Node> {
+        let token = self.tokenizer.cur_token().clone();
+        self.tokenizer.skip("{");
         let mut stmts = Vec::new();
 
         while !self.tokenizer.consume("}") {
@@ -444,7 +513,7 @@ impl Parser {
             }
         }
 
-        return Some(Node::Block(stmts))
+        return Some(Node::Block(stmts, token))
     }
 
     // expr = assign
@@ -454,12 +523,14 @@ impl Parser {
 
     // assign = equality ("=" assign)?
     fn assign(&mut self) -> Option<Node> {
+        let token = self.tokenizer.cur_token().clone();
         let mut node = self.equality().unwrap();
 
         if self.tokenizer.consume("=") {
             node = Node::Assign {
                 lhs: Box::new(node),
                 rhs: Box::new(self.assign().unwrap()),
+                token,
             };
         }
 
@@ -469,10 +540,17 @@ impl Parser {
     // expr-stmt = expr? ";"
     fn expr_stmt(&mut self) -> Option<Node> {
         if self.tokenizer.consume(";") {
-            return Some(Node::Block(Vec::new()));
+            return Some(Node::Block(
+                Vec::new(),
+                self.tokenizer.cur_token().clone(),
+            ));
         }
 
-        let node = Node::ExprStmt(Box::new(self.expr().unwrap()));
+        let tok_expr = self.tokenizer.cur_token().clone();
+        let node = Node::ExprStmt(
+            Box::new(self.expr().unwrap()),
+            tok_expr,
+        );
         self.tokenizer.skip(";");
 
         Some(node)
@@ -483,10 +561,12 @@ impl Parser {
         let mut node = self.relational().unwrap();
 
         loop {
+            let token = self.tokenizer.cur_token().clone();
             if self.tokenizer.consume("==") {
                 node = Node::Eq {
                     lhs: Box::new(node),
                     rhs: Box::new(self.relational().unwrap()),
+                    token,
                 };
                 continue;
             }
@@ -495,6 +575,7 @@ impl Parser {
                 node = Node::Ne {
                     lhs: Box::new(node),
                     rhs: Box::new(self.relational().unwrap()),
+                    token,
                 };
                 continue;
             }
@@ -508,10 +589,12 @@ impl Parser {
         let mut node = self.add().unwrap();
 
         loop {
+            let token = self.tokenizer.cur_token().clone();
             if self.tokenizer.consume("<") {
                 node = Node::Lt {
                     lhs: Box::new(node),
                     rhs: Box::new(self.add().unwrap()),
+                    token,
                 };
                 continue;
             }
@@ -520,6 +603,7 @@ impl Parser {
                 node = Node::Le {
                     lhs: Box::new(node),
                     rhs: Box::new(self.add().unwrap()),
+                    token,
                 };
                 continue;
             }
@@ -528,6 +612,7 @@ impl Parser {
                 node = Node::Lt {
                     lhs: Box::new(self.add().unwrap()),
                     rhs: Box::new(node),
+                    token,
                 };
                 continue;
             }
@@ -536,6 +621,7 @@ impl Parser {
                 node = Node::Le {
                     lhs: Box::new(self.add().unwrap()),
                     rhs: Box::new(node),
+                    token,
                 };
                 continue;
             }
@@ -549,12 +635,13 @@ impl Parser {
     // so that p+n points to the location n elements (not bytes) ahead of p.
     // In other words, we need to scale an integer value before adding to a
     // pointer value. This function takes care of the scaling.
-    fn new_add(&mut self, mut lhs: Node, mut rhs: Node) -> Option<Node> {
+    fn new_add(&mut self, mut lhs: Node, mut rhs: Node, token: Token) -> Option<Node> {
         // num + num
         if lhs.get_type().is_num() && rhs.get_type().is_num() {
             return  Some(Node::Add {
-                lhs: Box::new(lhs),
+                lhs: Box::new(lhs.clone()),
                 rhs: Box::new(rhs),
+                token,
             });
         }
 
@@ -573,33 +660,44 @@ impl Parser {
         }
 
         rhs = Node::Mul {
-            lhs: Box::new(rhs),
-            rhs: Box::new(Node::Num(lhs.get_type().get_base().get_size())),
+            lhs: Box::new(rhs.clone()),
+            rhs: Box::new(Node::Num(
+                lhs.get_type().get_base().get_size(),
+                rhs.clone().get_token().clone(),
+            )),
+            token: rhs.get_token().clone(),
         };
         return Some(Node::Add {
-            lhs: Box::new(lhs),
+            lhs: Box::new(lhs.clone()),
             rhs: Box::new(rhs),
+            token,
         });
     }
 
-    fn new_sub(&mut self, mut lhs: Node, mut rhs: Node) -> Option<Node> {
+    fn new_sub(&mut self, mut lhs: Node, mut rhs: Node, token: Token) -> Option<Node> {
         // num - num
         if lhs.get_type().is_num() && rhs.get_type().is_num() {
             return Some(Node::Sub {
-                lhs: Box::new(lhs),
+                lhs: Box::new(lhs.clone()),
                 rhs: Box::new(rhs),
+                token,
             });
         }
 
         // ptr - num
         if lhs.get_type().is_ptr() && rhs.get_type().is_num() {
             rhs = Node::Mul {
-                lhs: Box::new(rhs),
-                rhs: Box::new(Node::Num(lhs.get_type().get_size())),
+                lhs: Box::new(rhs.clone()),
+                rhs: Box::new(Node::Num(
+                    lhs.get_type().get_size(),
+                    rhs.clone().get_token().clone(),
+                )),
+                token: rhs.get_token().clone(),
             };
             return Some(Node::Sub {
-                lhs: Box::new(lhs),
+                lhs: Box::new(lhs.clone()),
                 rhs: Box::new(rhs),
+                token,
             });
         }
 
@@ -608,14 +706,19 @@ impl Parser {
             lhs = Node::Sub {
                 lhs: Box::new(lhs),
                 rhs: Box::new(rhs),
+                token: token.clone(),
             };
             return Some(Node::Div {
                 lhs: Box::new(lhs.clone()),
-                rhs: Box::new(Node::Num(lhs.get_type().get_size())),
+                rhs: Box::new(Node::Num(
+                    lhs.get_type().get_size(),
+                    self.tokenizer.cur_token().clone(),
+                )),
+                token,
             });
         }
         self.tokenizer.error_tok(
-            self.tokenizer.cur_token(),
+            &token,
             "invalid operands"
         );
 
@@ -627,15 +730,16 @@ impl Parser {
         let mut node = self.mul().unwrap();
 
         loop {
+            let token = self.tokenizer.cur_token().clone();
             if self.tokenizer.consume("+") {
                 let rhs = self.mul().unwrap().clone();
-                node = self.new_add(node, rhs).unwrap();
+                node = self.new_add(node, rhs, token).unwrap();
                 continue;
             }
             
             if self.tokenizer.consume("-") {
                 let rhs = self.mul().unwrap().clone();
-                node = self.new_sub(node, rhs).unwrap();
+                node = self.new_sub(node, rhs, token).unwrap();
                 continue;
             }
 
@@ -646,6 +750,7 @@ impl Parser {
     // funcall = ident "(" (assign ("," assign)*)? ")"
     fn funcall(&mut self) -> Option<Node> {
         let mut args = Vec::new();
+        let token = self.tokenizer.cur_token().clone();
         let name = self.get_ident();
 
         self.tokenizer.next_token();
@@ -660,7 +765,11 @@ impl Parser {
             i += 1;
         }
 
-        Some(Node::FuncCall { name, args })
+        Some(Node::FuncCall {
+            name,
+            args,
+            token,
+        })
     }
 
     // primary = "(" "{" compound-stmt "}" ")"
@@ -671,9 +780,12 @@ impl Parser {
     //         | num
     fn primary(&mut self) -> Option<Node> {
         if self.tokenizer.cur_token().equal("(") && self.tokenizer.peek_token("{") {
+            let token = self.tokenizer.cur_token().clone();
             self.tokenizer.next_token();
-            self.tokenizer.next_token();
-            let node = Node::StmtExpr (Box::new(self.compound_stmt().unwrap()));
+            let node = Node::StmtExpr(
+                Box::new(self.compound_stmt().unwrap()),
+                token,
+            );
 
             self.tokenizer.skip(")");
             return Some(node);
@@ -689,7 +801,10 @@ impl Parser {
 
         if self.tokenizer.consume("sizeof") {
             let node = self.unary().unwrap();
-            return Some(Node::Num(node.get_type().get_size()));
+            return Some(Node::Num(
+                node.get_type().get_size(),
+                token,
+            ));
         }
 
         if token.kind == TokenKind::Ident {
@@ -709,20 +824,29 @@ impl Parser {
                 panic!()
             };
 
-            return Some(Node::Var{ name, ty: ty });
+            return Some(Node::Var{
+                name,
+                ty,
+                token,
+            });
         }
 
         if token.kind == TokenKind::Str {
             let var = self.new_string_literal(token.literal.clone(), token.ty.clone().unwrap());
             self.tokenizer.next_token();
+            let ty = token.clone().ty.unwrap();
             return Some(Node::Var {
                 name:   var.ty.get_name().unwrap(),
-                ty:     token.ty.unwrap(),
+                ty:     ty,
+                token,
             })
         }
 
         if token.kind == TokenKind::Num {
-            let node = Node::Num(token.val.unwrap());
+            let node = Node::Num(
+                token.val.unwrap(),
+                token,
+            );
             self.tokenizer.next_token();
             return Some(node);
         }
@@ -740,10 +864,12 @@ impl Parser {
         let mut node = self.unary().unwrap();
         
         loop {
+            let token = self.tokenizer.cur_token().clone();
             if self.tokenizer.consume("*") {
                 node = Node::Mul {
                     lhs: Box::new(node),
                     rhs: Box::new(self.unary().unwrap()),
+                    token,
                 };
                 continue;
             }
@@ -752,6 +878,7 @@ impl Parser {
                 node = Node::Div {
                     lhs: Box::new(node),
                     rhs: Box::new(self.unary().unwrap()),
+                    token,
                 };
                 continue;
             }
@@ -763,20 +890,30 @@ impl Parser {
     // unary = ("+" | "-" | "*" | "&") unary
     //       | postfix
     fn unary(&mut self) -> Option<Node> {
+        let token = self.tokenizer.cur_token().clone();
         if self.tokenizer.consume("+") {
             return self.unary();
         }
 
         if self.tokenizer.consume("-") {
-            return Some(Node::Neg(Box::new(self.unary().unwrap())));
+            return Some(Node::Neg(
+                Box::new(self.unary().unwrap()),
+                token,
+            ));
         }
 
         if self.tokenizer.consume("&") {
-            return Some(Node::Addr(Box::new(self.unary().unwrap())));
+            return Some(Node::Addr(
+                Box::new(self.unary().unwrap()),
+                token,
+            ));
         }
         
         if self.tokenizer.consume("*") {
-            return Some(Node::Deref(Box::new(self.unary().unwrap())));
+            return Some(Node::Deref(
+                Box::new(self.unary().unwrap()),
+                token,
+            ));
         }
 
         self.postfix()
@@ -788,15 +925,19 @@ impl Parser {
 
         while self.tokenizer.consume("[") {
             // x[y] is short for *(x+y)
+            let token = self.tokenizer.cur_token().clone();
             let idx = self.expr().unwrap();
             self.tokenizer.skip("]");
-            node = Node::Deref(Box::new(self.new_add(node, idx).unwrap()));
+            node = Node::Deref(
+                Box::new(self.new_add(node, idx, token.clone()).unwrap()),
+                token,
+            );
         }
 
         Some(node)
     }
 
-    // function-definition = declspec declarator "{" compound-stmt
+    // function-definition = declspec declarator compound-stmt
     fn function(&mut self, basety: Type) -> Option<Node> {
         let locals = Rc::new(RefCell::new( Scope {
             parent:     Some(Rc::clone(&self.global)),
@@ -805,6 +946,7 @@ impl Parser {
         }));
         self.scope = Rc::clone(&locals);
 
+        let token = self.tokenizer.cur_token().clone();
         let ty = self.declarator(basety.clone());
         let name = ty.get_name().unwrap();
 
@@ -814,16 +956,16 @@ impl Parser {
             stack_size: 0,
         };
 
-        self.tokenizer.skip("{");
         let mut body = Vec::new();
         body.push(Box::new(self.compound_stmt().unwrap()));
 
         Some(Node::Function {
-            name:   name,
-            params: params,
-            body:   body,
+            name,
+            params,
+            body,
             locals: Rc::clone(&self.scope),
             ret_ty: Some(ty),
+            token,
         })
     }
 
@@ -858,6 +1000,7 @@ impl Parser {
 
     // program = (function-definition | global-variable)*
     pub fn parse(&mut self) -> Option<Node> {
+        let token = self.tokenizer.cur_token().clone();
         let mut prog = Vec::new();
 
         while self.tokenizer.cur_token().kind != TokenKind::Eof {
@@ -873,6 +1016,7 @@ impl Parser {
         Some(Node::Program {
             data:   Rc::clone(&self.global),
             text:   prog,
+            token,
         })
     }
 }
