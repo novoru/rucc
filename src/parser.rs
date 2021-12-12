@@ -309,7 +309,10 @@ impl Parser {
                 token.error("expected a number");
                 panic!();
             };
-            self.tokenizer.skip("]");
+            let token = self.tokenizer.cur_token();
+            if !token.equal("]") {
+                token.error("expected ']'");
+            }
             ty = self.type_suffix(ty.clone());
 
             return Type::Array {
