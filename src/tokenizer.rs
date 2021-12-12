@@ -228,8 +228,24 @@ impl Tokenizer {
         false
     }
 
-    fn read_escape_char(&self, ch: char) -> char {
-        match ch {
+    fn read_escape_char(&mut self) -> char {
+        // Read an octal number.
+        if matches!(self.ch, '0' ..= '7') {
+            let mut c = self.ch.to_digit(8).unwrap();
+            self.read_char();
+            if matches!(self.ch, '0' ..= '7') {
+                c = (c << 3) + self.ch.to_digit(8).unwrap();
+                self.read_char();
+                if matches!(self.ch, '0' ..= '7') {
+                    c = (c << 3) + self.ch.to_digit(8).unwrap();
+                    self.read_char();
+                }
+            }
+
+            return std::char::from_u32(c).unwrap();
+        }
+
+        let ch = match self.ch {
             'a' =>  '\x07',
             'b' =>  '\x08',
             't' =>  '\t',
@@ -239,8 +255,12 @@ impl Tokenizer {
             'r' =>  '\r',
             // [GNU] \e for the ASCII escape character is a GNU C extension.
             'e' =>  '\x1B',
-            _   =>  ch,
-        }
+            _   =>  self.ch,
+        };
+
+        self.read_char();
+
+        ch
     }
 
     fn read_string_literal(&mut self) {
@@ -251,8 +271,7 @@ impl Tokenizer {
         while self.ch != '"' {
             if self.ch == '\\' {
                 self.read_char();
-                s.push(self.read_escape_char(self.ch));
-                self.read_char();
+                s.push(self.read_escape_char());
             } else {
                 s.push(self.ch);
                 self.read_char();
@@ -381,6 +400,27 @@ fn test_escape_char() {
             loc:        2,
             val:        None,
             literal:    "\n\0".to_string(),
+            ty:         Some(Type::Array {
+                name:   None,
+                base:   Box::new(ty_char(None)),
+                size:   2,
+                len:    2,
+            }),
+        }
+    );
+}
+
+#[test]
+fn test_octal_string() {
+    let mut tokenizer = Tokenizer::new(" \"\\0\" ");
+    tokenizer.tokenize();
+    assert_eq!(
+        tokenizer.next_token().unwrap(),
+        Token {
+            kind:       TokenKind::Str,
+            loc:        2,
+            val:        None,
+            literal:    "\0\0".to_string(),
             ty:         Some(Type::Array {
                 name:   None,
                 base:   Box::new(ty_char(None)),
