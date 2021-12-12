@@ -13,7 +13,7 @@ assert() {
 	expected="$1"
 	input="$2"
 
-	./target/debug/rucc "$input" > tmp.s || exit
+	echo "$input" | ./target/debug/rucc - > tmp.s || exit
 	gcc -static -o tmp tmp.s tmp2.o
 	./tmp
 	actual="$?"
