@@ -75,7 +75,7 @@ impl Node {
             Node::Assign { lhs, .. }    =>  {
                 let ty = lhs.get_type();
                 if let Type::Array { .. } = ty {
-                    panic!("not an lvalue");
+                    self.get_token().error("not an lvalue");
                 }
 
                 ty
@@ -250,7 +250,7 @@ impl Parser {
     fn get_ident(&self) -> String {
         let token = self.tokenizer.cur_token();
         if token.kind != TokenKind::Ident {
-            self.tokenizer.error_tok(token, "expected an identifier");
+            token.error("expected an identifier");
         }
         token.literal.to_string()
     }
@@ -302,16 +302,14 @@ impl Parser {
         if self.tokenizer.peek_token("[") {
             self.tokenizer.next_token();
             self.tokenizer.next_token();
+            let token = self.tokenizer.cur_token().clone();
             let sz = if let Some(val) = self.tokenizer.next_token().unwrap().val {
                 val
             } else {
-                self.tokenizer.error_tok(self.tokenizer.cur_token(), "expected a number");
+                token.error("expected a number");
                 panic!();
             };
-            let token = self.tokenizer.cur_token();
-            if !token.equal("]") {
-                self.tokenizer.error_tok(&token, "expected ']'");
-            }
+            self.tokenizer.skip("]");
             ty = self.type_suffix(ty.clone());
 
             return Type::Array {
@@ -339,7 +337,7 @@ impl Parser {
          
         let token = self.tokenizer.cur_token().clone();
         if token.kind != TokenKind::Ident {
-            self.tokenizer.error_tok(&token, "expected a variable name");
+            token.error("expected a variable name");
         }
         ty.set_name(token.literal.to_string());
         ty = self.type_suffix(ty);
@@ -646,10 +644,7 @@ impl Parser {
         }
 
         if lhs.get_type().is_ptr() && rhs.get_type().is_ptr() {
-            self.tokenizer.error_tok(
-                self.tokenizer.cur_token(),
-                "invalid operands"
-            );
+            token.error("invalid operands");
         }
 
         // Canonicalize `num + ptr` to `ptr + num`.
@@ -717,10 +712,7 @@ impl Parser {
                 token,
             });
         }
-        self.tokenizer.error_tok(
-            &token,
-            "invalid operands"
-        );
+        token.error("invalid operands");
 
         None
     }
@@ -820,7 +812,7 @@ impl Parser {
             let ty = if let Some(obj) = self.scope.borrow().find_var(&name) {
                 obj.ty.clone()
             } else {
-                self.tokenizer.error_tok(&token, "undefined variable");
+                token.error("undefined variable");
                 panic!()
             };
 
@@ -851,10 +843,7 @@ impl Parser {
             return Some(node);
         }
 
-        self.tokenizer.error_tok(
-            self.tokenizer.cur_token(),
-            &format!("expected an expression: {:?}", self.tokenizer.cur_token()),
-        );
+        token.error("expected an expression");
         
         None
     }

@@ -22,30 +22,39 @@ pub struct Token {
     pub val:        Option<u32>,
     pub literal:    String,
     pub ty:         Option<Type>,   // Used if TokenKind::Str
+    line:           String,
+    lineno:         usize,
+    indent:         usize,
 }
 
 impl Token {
-    pub fn new(kind: TokenKind, loc: usize, s: &str) -> Self {
+    pub fn new(kind: TokenKind, loc: usize, s: &str, line: String, lineno: usize, indent: usize) -> Self {
         Token {
             kind:       kind,
             loc:        loc,
             val:        None,
             literal:    s.to_string(),
             ty:         None,
+            line:       line,
+            lineno:     lineno,
+            indent:     indent,
         }
     }
 
-    pub fn new_num(val: u32, loc: usize, s: &str) -> Self {
+    pub fn new_num(val: u32, loc: usize, s: &str, line: String, lineno: usize, indent: usize) -> Self {
         Token {
             kind:       TokenKind::Num,
             loc:        loc,
             val:        Some(val),
             literal:    s.to_string(),
             ty:         None,
+            line:       line,
+            lineno:     lineno,
+            indent:     indent,
         }
     }
 
-    pub fn new_str(loc: usize, s: &str, len: u32) -> Self {
+    pub fn new_str(loc: usize, s: &str, len: u32, line: String, lineno: usize, indent: usize) -> Self {
         Token {
             kind:       TokenKind::Str,
             loc:        loc,
@@ -57,11 +66,21 @@ impl Token {
                 size:   len,
                 len:    len,
             }),
+            line:       line,
+            lineno:     lineno,
+            indent:     indent,
         }
     }
 
     pub fn equal(&self, op: &str) -> bool {
         self.literal == op
+    }
+
+    pub fn error(&self, s: &str) {
+        eprintln!("{}", self.line);
+        eprint!("{:indent$}^ ", "", indent=self.indent);
+        eprintln!("{}", s);
+        process::exit(1);
     }
 }
 
@@ -121,21 +140,37 @@ impl Tokenizer {
 
                 if self.is_keywords(&self.input[start..self.pos]) {
                     self.tokens.push(Token::new(
-                        TokenKind::Keyword, start, &self.input[start..self.pos]
+                        TokenKind::Keyword,
+                        start,
+                        &self.input[start..self.pos],
+                        self.get_line(start),
+                        self.get_lineno(start),
+                        self.get_indent(start),
                     ));
                 } else {
                     self.tokens.push(Token::new(
-                        TokenKind::Ident, start, &self.input[start..self.pos]
+                        TokenKind::Ident,
+                        start,
+                        &self.input[start..self.pos],
+                        self.get_line(start),
+                        self.get_lineno(start),
+                        self.get_indent(start),
                     ));
                 }
 
                 continue;
             }
 
+            let start = self.pos;
             let punct_len = self.read_punct(&self.input[self.pos..self.input.len()]);
             if punct_len != 0 {
                 self.tokens.push(Token::new(
-                    TokenKind::Punct, self.pos, &self.input[self.pos..self.pos+punct_len]
+                    TokenKind::Punct,
+                    self.pos,
+                    &self.input[self.pos..self.pos+punct_len],
+                    self.get_line(start),
+                    self.get_lineno(start),
+                    self.get_indent(start),
                 ));
                 for _ in 0..punct_len {
                     self.read_char();
@@ -146,7 +181,12 @@ impl Tokenizer {
             self.error_at(self.pos, "invalide token");
         }
         self.tokens.push(Token::new(
-            TokenKind::Eof, self.pos, ""
+            TokenKind::Eof,
+            self.pos,
+            "",
+            self.get_line(self.pos),
+            self.get_lineno(self.pos),
+            self.get_indent(self.pos),
         ));
     }
 
@@ -169,7 +209,7 @@ impl Tokenizer {
     pub fn skip(&mut self, s: &str) {
         let token = self.cur_token();
         if !token.equal(s) {
-            self.error_tok(token, &format!("expected '{}'", s));
+            token.error(&format!("expected '{}'", s));
         }
         self.next_token();
     }
@@ -192,7 +232,12 @@ impl Tokenizer {
         }
         let literal = &self.input[start..self.pos];
         self.tokens.push(Token::new_num(
-            literal.parse::<u32>().unwrap(), start, literal
+            literal.parse::<u32>().unwrap(),
+            start,
+            literal,
+            self.get_line(start),
+            self.get_lineno(start),
+            self.get_indent(start),
         ));
     }
 
@@ -295,7 +340,12 @@ impl Tokenizer {
         self.read_char();
         s.push('\0');
         self.tokens.push(Token::new_str(
-            start, &s, s.chars().count() as u32
+            start,
+            &s,
+            s.chars().count() as u32,
+            self.get_line(start),
+            self.get_lineno(start),
+            self.get_indent(start),
         ));
     }
 
@@ -323,11 +373,67 @@ impl Tokenizer {
         &self.tokens[idx]
     }
 
+    fn get_line(&self, loc: usize) -> String {
+        let mut line = 0;
+
+        for (i, ch) in self.input.chars().rev().skip(self.input.len()-loc).enumerate() {
+            if ch =='\n' && i != 0 {
+                line = i + 1;
+                break;
+            }
+        }
+
+        let mut end = if loc >= self.input.len() {
+            loc
+        } else {
+            0
+        };
+
+        for (i, ch) in self.input.chars().skip(loc).enumerate() {
+            if ch == '\n' || ch == '\0' {
+                end = i + loc;
+                break;
+            }
+        }
+
+        self.input[line..end].to_string().replace("\n", "")
+    }
+
+    fn get_lineno(&self, loc: usize) -> usize {
+        let mut lineno = 1;
+        for (i, ch) in self.input.chars().enumerate() {
+            if i == loc {
+                break;
+            }
+            if ch == '\n' {
+                lineno += 1;
+            }
+        }
+        
+        lineno
+    }
+
+    fn get_indent(&self, mut loc: usize) -> usize {
+        if loc >= self.input.len() {
+            loc = self.input.len()-1;
+        }
+        
+        let mut line = 0;
+
+        for (i, ch) in self.input.chars().rev().skip(self.input.len()-loc).enumerate() {
+            if ch =='\n' && i != 0 {
+                line = i + 1;
+                break;
+            }
+        }
+
+        loc-line
+    }
+
     fn error_at(&self, loc: usize, s: &str) {
         let mut line = 0;
 
         for (i, ch) in self.input.chars().rev().skip(self.input.len()-loc).enumerate() {
-            dbg!((i, ch));
             if ch =='\n' && i != 0 {
                 line = i + 1;
                 break;
@@ -337,18 +443,11 @@ impl Tokenizer {
         let mut end = 0;
 
         for (i, ch) in self.input.chars().skip(loc).enumerate() {
-            dbg!((i, ch));
             if ch == '\n' || ch == '\0' {
                 end = i + loc;
                 break;
             }
         }
-
-        dbg!(&self.input);
-        dbg!(line);
-        dbg!(loc);
-        dbg!(end);
-        dbg!(self.input[line..end].to_string());
 
         eprintln!("{}", self.input[line..end].to_string().replace("\n", ""));
         eprint!("{:indent$}^ ", "", indent=loc-line);

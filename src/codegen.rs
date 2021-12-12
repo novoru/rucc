@@ -1,5 +1,4 @@
 use std::rc::Rc;
-use crate::util::error;
 use crate::parser::{ Node, Obj };
 use crate::ty::Type;
 
@@ -95,7 +94,7 @@ impl CodeGenerator {
             Node::Deref (expr, ..)  =>  {
                 self.gen_expr(expr);
             },
-            _   =>  error("not an lvalue"),
+            _   =>  node.get_token().error("not an lvalue"),
         }
     }
 
@@ -204,7 +203,7 @@ impl CodeGenerator {
                 println!("  mov $0, %rax");
                 println!("  call {}", name);
             },
-            _   =>  error("invalid node"),
+            _   =>  node.get_token().error("invalid node"),
         }
     }
 
@@ -263,7 +262,7 @@ impl CodeGenerator {
             Node::ExprStmt (expr, ..)   => {
                 self.gen_expr(&expr);
             }
-            _   => error(&format!("invalid statement: {:?}", node)),
+            _   => node.get_token().error("invalid statement"),
         }
     }
 
@@ -303,7 +302,7 @@ impl CodeGenerator {
                 println!("  pop %rbp");
                 println!("  ret");
             },
-            _   =>  error(&format!("not function: {:?}", &func)),
+            _   =>  func.get_token().error("not function"),
         }
     }
 
@@ -331,7 +330,7 @@ impl CodeGenerator {
                     self.gen_func(func);
                 }
             },
-            _   =>  error(&format!("not program: {:?}", prog)),
+            _   =>  prog.get_token().error("not program"),
         }
     }
 
