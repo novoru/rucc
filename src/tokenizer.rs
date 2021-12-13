@@ -109,6 +109,32 @@ impl Tokenizer {
     pub fn tokenize(&mut self) {
         self.read_char();
         while self.ch != '\0' {
+            // Skip line comments.
+            if self.input[self.pos..].to_string().starts_with("//") {
+                self.read_char();
+                self.read_char();
+                while self.ch != '\n' {
+                    self.read_char();
+                }
+                continue;
+            }
+
+            // Skip block comments.
+            if self.input[self.pos..].to_string().starts_with("/*") {
+                let loc = self.pos;
+                self.read_char();
+                self.read_char();
+                while !self.input[self.pos..].to_string().starts_with("*/") {
+                    if self.ch == '\0' {
+                        self.error_at(loc, "unclosed block comment");
+                    }
+                    self.read_char();
+                }
+                self.read_char();
+                self.read_char();
+                continue;
+            }
+
             // Skip whitespace characters.
             if self.ch.is_whitespace() {
                 self.read_char();
