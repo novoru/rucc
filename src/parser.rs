@@ -95,7 +95,10 @@ impl Node {
                 match ty {
                     Type::Ptr   { base, .. }    |
                     Type::Array { base, .. }    =>  *base,
-                    _   =>  panic!("invalid pointer dereference"),
+                    _   =>  {
+                        self.get_token().error("invalid pointer dereference");
+                        panic!();
+                    },
                 }
             },
             Node::ExprStmt (expr, ..)   => expr.get_type(),
@@ -105,12 +108,16 @@ impl Node {
                         return expr.get_type();
                     }
                 }
-                panic!("statement expression returning void is not supported");
+                self.get_token().error("statement expression returning void is not supported");
+                panic!();
             },
             Node::Var { ty, .. }        =>  ty.clone(),
             Node::FuncCall { .. }       |
             Node::Num (..)              =>  ty_int(None),
-            _   =>  panic!("not an expression: {:?}", &self),
+            _   =>  {
+                self.get_token().error("not an expression");
+                panic!();
+            },
         }
     }
 

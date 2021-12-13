@@ -1,4 +1,5 @@
 use std::rc::Rc;
+use std::io::Write;
 use crate::parser::{ Node, Obj };
 use crate::ty::Type;
 
@@ -13,14 +14,16 @@ static ARGREG64: &'static [&str] = &[
 pub struct CodeGenerator {
     cur_func:   Option<Rc<Node>>,
     count:      u32,
+    output:     Box<dyn Write>,
 }
 
 impl CodeGenerator {
-    pub fn new() -> Self {
+    pub fn new(output: Box<dyn Write>) -> Self {
 
         CodeGenerator {
             cur_func:   None,
             count:      1,
+            output:     output,
         }
     }
 
@@ -30,34 +33,34 @@ impl CodeGenerator {
         c
     }
 
-    fn push(&self, ) {
-        println!("  push %rax");
+    fn push(&mut self, ) {
+        writeln!(self.output, "  push %rax").unwrap();
     }
 
-    fn pop(&self, arg: &str) {
-        println!("  pop {}", arg);
+    fn pop(&mut self, arg: &str) {
+        writeln!(self.output, "  pop {}", arg).unwrap();
     }
     
     // Load a value from where %rax is pointing to.
-    fn load(&self, ty: &Type) {
+    fn load(&mut self, ty: &Type) {
         if let Type::Array { .. } = ty {
             return;
         }
 
         if ty.get_size() == 1 {
-            println!("  movsbq (%rax), %rax");
+            writeln!(self.output, "  movsbq (%rax), %rax").unwrap();
         } else {
-            println!("  mov (%rax), %rax");
+            writeln!(self.output, "  mov (%rax), %rax").unwrap();
         }
     }
 
-    fn store(&self, ty: &Type) {
+    fn store(&mut self, ty: &Type) {
         self.pop("%rdi");
 
         if ty.get_size() == 1 {
-            println!("  mov %al, (%rdi)");
+            writeln!(self.output, "  mov %al, (%rdi)").unwrap();
         } else {
-            println!("  mov %rax, (%rdi)");
+            writeln!(self.output, "  mov %rax, (%rdi)").unwrap();
         }
     }
 
@@ -70,7 +73,7 @@ impl CodeGenerator {
                     if let Node::Function { locals, .. } = &**func {
                         for obj in &locals.borrow().objs {
                             if &obj.ty.get_name().unwrap() == name {
-                                println!("  lea {}(%rbp), %rax", -(obj.offset as i32));
+                                writeln!(self.output, "  lea {}(%rbp), %rax", -(obj.offset as i32)).unwrap();
                                 return;
                             }
                         }
@@ -79,10 +82,10 @@ impl CodeGenerator {
                             for var in &scope.borrow().objs {
                                 if &var.ty.get_name().unwrap() == name {
                                     if scope.borrow().parent == None {
-                                        println!("  lea {}(%rip), %rax", var.ty.get_name().unwrap());
+                                        writeln!(self.output, "  lea {}(%rip), %rax", var.ty.get_name().unwrap()).unwrap();
                                         return;
                                     } else {
-                                        println!("  lea {}(%rbp), %rax", -(var.offset as i32));
+                                        writeln!(self.output, "  lea {}(%rbp), %rax", -(var.offset as i32)).unwrap();
                                         return;
                                     }
                                 }
@@ -100,75 +103,75 @@ impl CodeGenerator {
 
     fn gen_expr(&mut self, node: &Node) {
         match node {
-            Node::Num (val, ..)         => println!("  mov ${}, %rax", val),
+            Node::Num (val, ..)         => writeln!(self.output, "  mov ${}, %rax", val).unwrap(),
             Node::Add { lhs, rhs, .. }  =>  {
                 self.gen_expr(rhs);
                 self.push();
                 self.gen_expr(lhs);
                 self.pop("%rdi");
-                println!("  add %rdi, %rax");
+                writeln!(self.output, "  add %rdi, %rax").unwrap();
             },
             Node::Sub { lhs, rhs, .. }  =>  {
                 self.gen_expr(rhs);
                 self.push();
                 self.gen_expr(lhs);
                 self.pop("%rdi");
-                println!("  sub %rdi, %rax");
+                writeln!(self.output, "  sub %rdi, %rax").unwrap();
             },
             Node::Mul { lhs, rhs, .. }  =>  {
                 self.gen_expr(rhs);
                 self.push();
                 self.gen_expr(lhs);
                 self.pop("%rdi");
-                println!("  imul %rdi, %rax");
+                writeln!(self.output, "  imul %rdi, %rax").unwrap();
             },
             Node::Div { lhs, rhs, .. }  =>  {
                 self.gen_expr(rhs);
                 self.push();
                 self.gen_expr(lhs);
                 self.pop("%rdi");
-                println!("  cqo");
-                println!("  idiv %rdi");
+                writeln!(self.output, "  cqo").unwrap();
+                writeln!(self.output, "  idiv %rdi").unwrap();
             },
             Node::Neg (expr, ..)    =>   {
                 self.gen_expr(expr);
-                println!("  neg %rax");
+                writeln!(self.output, "  neg %rax").unwrap();
             },
             Node::Eq { lhs, rhs, .. }   =>  {
                 self.gen_expr(rhs);
                 self.push();
                 self.gen_expr(lhs);
                 self.pop("%rdi");
-                println!("  cmp %rdi, %rax");
-                println!("  sete %al");
-                println!("  movzb %al, %rax");
+                writeln!(self.output, "  cmp %rdi, %rax").unwrap();
+                writeln!(self.output, "  sete %al").unwrap();
+                writeln!(self.output, "  movzb %al, %rax").unwrap();
             },
             Node::Ne { lhs, rhs, .. }   =>  {
                 self.gen_expr(rhs);
                 self.push();
                 self.gen_expr(lhs);
                 self.pop("%rdi");
-                println!("  cmp %rdi, %rax");
-                println!("  setne %al");
-                println!("  movzb %al, %rax");
+                writeln!(self.output, "  cmp %rdi, %rax").unwrap();
+                writeln!(self.output, "  setne %al").unwrap();
+                writeln!(self.output, "  movzb %al, %rax").unwrap();
             },
             Node::Lt { lhs, rhs, .. }   =>  {
                 self.gen_expr(rhs);
                 self.push();
                 self.gen_expr(lhs);
                 self.pop("%rdi");
-                println!("  cmp %rdi, %rax");
-                println!("  setl %al");
-                println!("  movzb %al, %rax");
+                writeln!(self.output, "  cmp %rdi, %rax").unwrap();
+                writeln!(self.output, "  setl %al").unwrap();
+                writeln!(self.output, "  movzb %al, %rax").unwrap();
             },
             Node::Le { lhs, rhs, .. }   =>  {
                 self.gen_expr(rhs);
                 self.push();
                 self.gen_expr(lhs);
                 self.pop("%rdi");
-                println!("  cmp %rdi, %rax");
-                println!("  setle %al");
-                println!("  movzb %al, %rax");
+                writeln!(self.output, "  cmp %rdi, %rax").unwrap();
+                writeln!(self.output, "  setle %al").unwrap();
+                writeln!(self.output, "  movzb %al, %rax").unwrap();
             },
             Node::Deref (expr, ..)  =>  {
                 self.gen_expr(expr);
@@ -200,8 +203,8 @@ impl CodeGenerator {
                     self.pop(ARGREG64[i]);
                 }
 
-                println!("  mov $0, %rax");
-                println!("  call {}", name);
+                writeln!(self.output, "  mov $0, %rax").unwrap();
+                writeln!(self.output, "  call {}", name).unwrap();
             },
             _   =>  node.get_token().error("invalid node"),
         }
@@ -213,15 +216,15 @@ impl CodeGenerator {
                 let c = self.count();
 
                 self.gen_expr(cond);
-                println!("  cmp $0, %rax");
-                println!("  je  .L.else.{}", c);
+                writeln!(self.output, "  cmp $0, %rax").unwrap();
+                writeln!(self.output, "  je  .L.else.{}", c).unwrap();
                 self.gen_stmt(then);
-                println!("  jmp .L.end.{}", c);
-                println!(".L.else.{}:", c);
+                writeln!(self.output, "  jmp .L.end.{}", c).unwrap();
+                writeln!(self.output, ".L.else.{}:", c).unwrap();
                 if let Some(stmt) = els {
                     self.gen_stmt(stmt);
                 };
-                println!(".L.end.{}:", c);
+                writeln!(self.output, ".L.end.{}:", c).unwrap();
             },
             Node::For { init, cond, inc, body, .. } =>  {
                 let c = self.count();
@@ -229,12 +232,12 @@ impl CodeGenerator {
                 if let Some(stmt) = init {
                     self.gen_stmt(stmt);
                 }
-                println!(".L.begin.{}:", c);
+                writeln!(self.output, ".L.begin.{}:", c).unwrap();
 
                 if let Some(expr) = cond {
                     self.gen_expr(expr);
-                    println!("  cmp $0, %rax");
-                    println!("  je .L.end.{}", c);
+                    writeln!(self.output, "  cmp $0, %rax").unwrap();
+                    writeln!(self.output, "  je .L.end.{}", c).unwrap();
                 }
 
                 self.gen_stmt(body);
@@ -243,8 +246,8 @@ impl CodeGenerator {
                     self.gen_expr(expr);
                 }
 
-                println!("  jmp .L.begin.{}", c);
-                println!(".L.end.{}:", c);
+                writeln!(self.output, "  jmp .L.begin.{}", c).unwrap();
+                writeln!(self.output, ".L.end.{}:", c).unwrap();
             },
             Node::Block (stmts, ..) =>  {
                 for stmt in stmts {
@@ -255,7 +258,7 @@ impl CodeGenerator {
                 self.gen_expr(expr);
                 if let Some(func) = &self.cur_func {
                     if let Node::Function{ name, .. } = &**func {
-                        println!("  jmp .L.return.{}", name);
+                        writeln!(self.output, "  jmp .L.return.{}", name).unwrap();
                     }
                 }
             },
@@ -270,23 +273,23 @@ impl CodeGenerator {
         self.cur_func = Some(Rc::new(func.clone()));
         match func {
             Node::Function { name, params, body, locals, .. }  =>  {
-                println!("  .globl {}", name);
-                println!("  .text");
-                println!("{}:", name);
+                writeln!(self.output, "  .globl {}", name).unwrap();
+                writeln!(self.output, "  .text").unwrap();
+                writeln!(self.output, "{}:", name).unwrap();
                 
                 // Prologue
-                println!("  push %rbp");
+                writeln!(self.output, "  push %rbp").unwrap();
 
-                println!("  mov %rsp, %rbp");
-                println!("  sub ${}, %rsp", locals.borrow().stack_size);
+                writeln!(self.output, "  mov %rsp, %rbp").unwrap();
+                writeln!(self.output, "  sub ${}, %rsp", locals.borrow().stack_size).unwrap();
                 
                 // Save passed-by-register arguments to the stack
                 let mut i = 0;
                 for param in &params.objs {
                     if param.ty.get_size() == 1 {
-                        println!("  mov {}, {}(%rbp)", ARGREG8[i], -(param.offset as i32));
+                        writeln!(self.output, "  mov {}, {}(%rbp)", ARGREG8[i], -(param.offset as i32)).unwrap();
                     } else {
-                        println!("  mov {}, {}(%rbp)", ARGREG64[i], -(param.offset as i32));
+                        writeln!(self.output, "  mov {}, {}(%rbp)", ARGREG64[i], -(param.offset as i32)).unwrap();
                     }
                     i += 1;
                 }
@@ -297,27 +300,27 @@ impl CodeGenerator {
                 }
                 
                 // Epilogue
-                println!(".L.return.{}:", name);
-                println!("  mov %rbp, %rsp");
-                println!("  pop %rbp");
-                println!("  ret");
+                writeln!(self.output, ".L.return.{}:", name).unwrap();
+                writeln!(self.output, "  mov %rbp, %rsp").unwrap();
+                writeln!(self.output, "  pop %rbp").unwrap();
+                writeln!(self.output, "  ret").unwrap();
             },
             _   =>  func.get_token().error("not function"),
         }
     }
 
-    fn emit_data(&self, objs: &Vec<Obj>) {
+    fn emit_data(&mut self, objs: &Vec<Obj>) {
         for var in objs {
-            println!("  .data");
-            println!("  .globl {}", var.ty.get_name().unwrap());
-            println!("{}:", var.ty.get_name().unwrap());
+            writeln!(self.output, "  .data").unwrap();
+            writeln!(self.output, "  .globl {}", var.ty.get_name().unwrap()).unwrap();
+            writeln!(self.output, "{}:", var.ty.get_name().unwrap()).unwrap();
 
             if let Some(init_data) = &var.init_data {
                 for ch in init_data {
-                    println!("  .byte {}", *ch as u32);
+                    writeln!(self.output, "  .byte {}", *ch as u32).unwrap();
                 }
             } else {
-                println!("  .zero {}", var.ty.get_size());
+                writeln!(self.output, "  .zero {}", var.ty.get_size()).unwrap();
             }
         }
     }
