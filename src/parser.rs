@@ -169,7 +169,11 @@ impl Scope {
         (n + align - 1) / align * align
     }
 
-    pub fn add_var(&mut self, ty: &Type, init_data: Option<Vec<char>>) -> Obj {
+    pub fn add_var(&mut self, ty: &Type, init_data: Option<Vec<char>>, token: &Token) -> Obj {
+        if let Some(_) = self.find_lvar(&ty.get_name().unwrap()) {
+            token.error(&format!("redefinition of '{}'", &ty.get_name().unwrap()));
+        }
+
         let mut offset = ty.get_size();
         for obj in &mut self.objs {
             obj.offset += ty.get_size();
@@ -183,6 +187,7 @@ impl Scope {
         obj
     }
 
+    // find variable from local and global
     pub fn find_var(&self, name: &str) -> Option<Obj> {
         for obj in &self.objs {
             if obj.ty.get_name().unwrap() == name {
@@ -192,6 +197,17 @@ impl Scope {
 
         if let Some(scope) = &self.parent {
             return scope.borrow().find_var(name);
+        }
+
+        None
+    }
+    
+    // find variable from local
+    pub fn find_lvar(&self, name: &str) -> Option<Obj> {
+        for obj in &self.objs {
+            if obj.ty.get_name().unwrap() == name {
+                return Some(obj.clone())
+            }
         }
 
         None
@@ -227,13 +243,13 @@ impl Parser {
         }
     }
 
-    fn new_lvar(&mut self, ty: &Type) {
-        (*self.scope).borrow_mut().add_var(ty, None);
+    fn new_lvar(&mut self, ty: &Type, token: &Token) {
+        (*self.scope).borrow_mut().add_var(ty, None, token);
     }
 
-    fn new_param_lvars(&mut self, params: &Vec<Type>) {
-        for param in params {
-            self.new_lvar(param);
+    fn new_param_lvars(&mut self, params: &Vec<(Type, Token)>) {
+        for (param, token) in params {
+            self.new_lvar(param, token);
         }
     }
 
@@ -244,14 +260,14 @@ impl Parser {
         s
     }
 
-    fn new_anon_gvar(&mut self, s: String, ty: Type) -> Obj {
+    fn new_anon_gvar(&mut self, token: Token, ty: Type) -> Obj {
         let mut ty = ty.clone();
         ty.set_name(self.new_unique_name());
-        self.global.borrow_mut().add_var(&ty, Some(s.chars().collect()))
+        self.global.borrow_mut().add_var(&ty, Some(token.literal.chars().collect()), &token)
     }
 
-    fn new_string_literal(&mut self, s: String, ty: Type) -> Obj {
-        self.new_anon_gvar(s, ty)
+    fn new_string_literal(&mut self, token: Token, ty: Type) -> Obj {
+        self.new_anon_gvar(token, ty)
     }
 
     fn get_ident(&self) -> String {
@@ -285,13 +301,14 @@ impl Parser {
 
             let basety = self.declspec();
             let ty = self.declarator(basety);
-            params.push(ty);
+            let token = self.tokenizer.cur_token().clone();
+            params.push((ty, token));
         }
         self.new_param_lvars(&params);
 
         Type::Function {
             name:   ty.get_name(),
-            params: Some(params),
+            params: Some(params.into_iter().map(|elm| elm.0).collect::<Vec<Type>>()),
             ret_ty: Box::new(ty),
         }
     }
@@ -372,7 +389,7 @@ impl Parser {
             let tok_lhs = self.tokenizer.cur_token().clone();
             let ty = self.declarator(basety.clone());
             let name = ty.get_name().unwrap();
-            self.new_lvar(&ty);
+            self.new_lvar(&ty, &tok_lhs);
 
             if !self.tokenizer.consume("=") {
                 continue;
@@ -834,7 +851,7 @@ impl Parser {
         }
 
         if token.kind == TokenKind::Str {
-            let var = self.new_string_literal(token.literal.clone(), token.ty.clone().unwrap());
+            let var = self.new_string_literal(token.clone(), token.ty.clone().unwrap());
             self.tokenizer.next_token();
             let ty = token.clone().ty.unwrap();
             return Some(Node::Var {
@@ -969,6 +986,7 @@ impl Parser {
     }
 
     fn global_variables(&mut self, basety: Type) {
+        let token = self.tokenizer.cur_token().clone();
         let mut first = true;
 
         while !self.tokenizer.consume(";") {
@@ -978,7 +996,7 @@ impl Parser {
             first = false;
 
             let ty = self.declarator(basety.clone());
-            self.global.borrow_mut().add_var(&ty, None);
+            self.global.borrow_mut().add_var(&ty, None, &token);
         }
     }
  
