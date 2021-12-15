@@ -176,11 +176,9 @@ impl Scope {
 
         let mut offset = ty.get_size();
         for obj in &mut self.objs {
-            obj.offset += ty.get_size();
             offset += obj.ty.get_size();
         }
-        let size = ty.get_size();
-        let obj = Obj { offset: size, ty: ty.clone(), init_data: init_data };
+        let obj = Obj { offset, ty: ty.clone(), init_data: init_data };
         self.objs.push(obj.clone());
         self.stack_size = self.align_to(offset, 16);
 
