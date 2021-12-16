@@ -217,4 +217,10 @@ assert 2 'int main() { /* return 1; */ return 2; }'
 assert 2 'int main() { // return 1;
 return 2; }'
 
+assert 3 'int main() { int a = 1; int b; { int a = 2; b = a + 1;} return b; }'
+
+assert 2 'int main() { int x=2; { int x=3; } return x; }'
+assert 2 'int main() { int x=2; { int x=3; } { int y=4; return x; }}'
+assert 3 'int main() { int x=2; { x=3; } return x; }'
+
 echo OK

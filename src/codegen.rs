@@ -68,31 +68,13 @@ impl CodeGenerator {
     // It's an error if a given node does not reside in memory.
     fn gen_addr(&mut self, node: &Node) {
         match node {
-            Node::Var { name, .. }  =>  {
-                if let Some(func) = &self.cur_func {
-                    if let Node::Function { locals, .. } = &**func {
-                        for obj in &locals.borrow().objs {
-                            if &obj.ty.get_name().unwrap() == name {
-                                writeln!(self.output, "  lea {}(%rbp), %rax", -(obj.offset as i32)).unwrap();
-                                return;
-                            }
-                        }
-
-                        if let Some(scope) = &locals.borrow().parent {
-                            for var in &scope.borrow().objs {
-                                if &var.ty.get_name().unwrap() == name {
-                                    if scope.borrow().parent == None {
-                                        writeln!(self.output, "  lea {}(%rip), %rax", var.ty.get_name().unwrap()).unwrap();
-                                        return;
-                                    } else {
-                                        writeln!(self.output, "  lea {}(%rbp), %rax", -(var.offset as i32)).unwrap();
-                                        return;
-                                    }
-                                }
-                            }
-                        }
-                    }
+            Node::Var { obj, .. }  =>  {
+                if obj.is_local {
+                    writeln!(self.output, "  lea {}(%rbp), %rax", -(obj.offset as i32)).unwrap();
+                } else {
+                    writeln!(self.output, "  lea {}(%rip), %rax", obj.ty.get_name().unwrap()).unwrap();
                 }
+                return;
             },
             Node::Deref (expr, ..)  =>  {
                 self.gen_expr(expr);
