@@ -404,7 +404,7 @@ impl Tokenizer {
 
         for (i, ch) in self.input.chars().rev().skip(self.input.len()-loc).enumerate() {
             if ch =='\n' && i != 0 {
-                line = i + 1;
+                line = loc - i;
                 break;
             }
         }
@@ -448,7 +448,7 @@ impl Tokenizer {
 
         for (i, ch) in self.input.chars().rev().skip(self.input.len()-loc).enumerate() {
             if ch =='\n' && i != 0 {
-                line = i + 1;
+                line = loc - i;
                 break;
             }
         }
@@ -461,7 +461,7 @@ impl Tokenizer {
 
         for (i, ch) in self.input.chars().rev().skip(self.input.len()-loc).enumerate() {
             if ch =='\n' && i != 0 {
-                line = i + 1;
+                line = loc - i;
                 break;
             }
         }
