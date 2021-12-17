@@ -426,7 +426,7 @@ impl Parser {
         ty
     }
 
-    // declarator = "*" ident type-suffix
+    // declarator = "*"* ident type-suffix
     fn declarator(&mut self, ty: Type) -> Type {
         let mut ty = ty.clone();
         while self.tokenizer.consume("*") {
@@ -1036,13 +1036,13 @@ impl Parser {
 
     // function-definition = declspec declarator compound-stmt
     fn function(&mut self, basety: Type) -> Option<Node> {
+        self.enter_scope();
         let locals = Rc::new(RefCell::new( Env {
             parent:     Some(Rc::clone(&self.global)),
             objs:       Vec::new(),
             stack_size: 0,
         }));
         self.local = Rc::clone(&locals);
-        self.enter_scope();
 
         let token = self.tokenizer.cur_token().clone();
         let ty = self.declarator(basety.clone());
@@ -1056,8 +1056,8 @@ impl Parser {
 
         let mut body = Vec::new();
         body.push(Box::new(self.compound_stmt().unwrap()));
-        self.leave_scope();
 
+        self.leave_scope();
         Some(Node::Function {
             name,
             params,
@@ -1083,18 +1083,59 @@ impl Parser {
         }
     }
  
+    // function = "*"* ident "(" func-params ")"
     fn is_function(&mut self) -> bool {
         if self.tokenizer.cur_token().equal(";") {
             return false;
         }
 
         let idx = self.tokenizer.idx;
-        if let Type::Function {..} = self.declarator(ty_int(None)) {
+
+        while self.tokenizer.consume("*") {
+        };
+
+        if self.tokenizer.cur_token().kind != TokenKind::Ident {
+            self.tokenizer.idx = idx;
+            return false;
+        }
+
+        self.tokenizer.next_token();
+
+        if !self.tokenizer.cur_token().equal("(") {
+            self.tokenizer.idx = idx;
+            return false;
+        }
+
+        self.tokenizer.next_token();
+
+        if let Type::Function { .. } = self.is_func_params() {
             self.tokenizer.idx = idx;
             true
         } else {
             self.tokenizer.idx = idx;
             false
+        }
+    }
+
+    // func-params  = (param ("," param)*)?
+    // param        = declspec declarator
+    fn is_func_params(&mut self) -> Type {
+        let mut params = Vec::new();
+        while !self.tokenizer.consume(")") {
+            if params.len() != 0 {
+                self.tokenizer.skip(",");
+            }
+
+            let basety = self.declspec();
+            let ty = self.declarator(basety);
+            let token = self.tokenizer.cur_token().clone();
+            params.push((ty, token));
+        }
+
+        Type::Function {
+            name:   None,
+            params: None,
+            ret_ty: Box::new(ty_int(None)),
         }
     }
 
@@ -1113,6 +1154,7 @@ impl Parser {
             }
             self.global_variables(basety);
         }
+
         self.leave_scope();
 
         Some(Node::Program {
