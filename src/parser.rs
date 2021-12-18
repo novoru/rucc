@@ -1,5 +1,6 @@
 use std::rc::Rc;
 use std::cell::RefCell;
+use std::collections::HashMap;
 use crate::tokenizer::{ Token, TokenKind, Tokenizer };
 use crate::ty::*;
 
@@ -180,7 +181,7 @@ pub struct Obj {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Env {
     pub parent:     Option<Rc<RefCell<Env>>>,
-    pub objs:       Vec<Obj>,
+    pub objs:       Vec<Obj>,   // variables
     pub stack_size: u32,
 }
 
@@ -241,6 +242,7 @@ impl Env {
 pub struct Scope {
     parent: Option<Rc<RefCell<Scope>>>,
     objs:   Vec<Rc<Obj>>,
+    tags:   HashMap<String, Type>,   // struct tags
 }
 
 impl Scope {
@@ -268,6 +270,14 @@ impl Scope {
 
         None
     }
+
+    fn find_tag(&self, name: String) -> Option<Type> {
+        if let Some(tag) = self.tags.get(&name) {
+            Some(tag.clone())
+        } else {
+            None
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -286,15 +296,21 @@ impl Parser {
 
         Parser {
             tokenizer:  tokenizer,
-            id:         0,
-            global:     Rc::new(RefCell::new( Env {
-                parent: None, objs: Vec::new(), stack_size: 0,
+            id:     0,
+            global: Rc::new(RefCell::new( Env {
+                parent: None,
+                objs:   Vec::new(),
+                stack_size: 0,
             })),
-            local:      Rc::new(RefCell::new( Env {
-                parent: None, objs: Vec::new(), stack_size: 0,
+            local:  Rc::new(RefCell::new( Env {
+                parent: None,
+                objs:   Vec::new(),
+                stack_size: 0,
             })),
-            scope:      Rc::new(RefCell::new( Scope {
-                parent: None, objs: Vec::new()
+            scope:  Rc::new(RefCell::new( Scope {
+                parent: None,
+                objs:   Vec::new(),
+                tags:   HashMap::new(),
             })),
         }
     }
@@ -303,6 +319,7 @@ impl Parser {
         self.scope = Rc::new(RefCell::new( Scope {
             parent: Some(Rc::clone(&self.scope)),
             objs:   Vec::new(),
+            tags:   HashMap::new(),
         }));
     }
 
@@ -314,6 +331,10 @@ impl Parser {
 
     fn push_scope(&mut self, obj: Rc<Obj>) {
         self.scope.borrow_mut().objs.push(Rc::clone(&obj));
+    }
+
+    fn push_tag_scope(&mut self, name: &str, tag: Type) {
+        self.scope.borrow_mut().tags.insert(name.to_string(), tag);
     }
 
     fn new_lvar(&mut self, ty: &Type, token: &Token) -> Obj {
@@ -1085,9 +1106,27 @@ impl Parser {
 
     }
 
-    // struct-decl = "{" struct-members
+    // struct-decl = ident? "{" struct-members
     fn struct_decl(&mut self) -> Type {
-        self.tokenizer.skip("{");
+
+        // Read a struct tag.
+        let mut tag = None;
+        if self.tokenizer.cur_token().kind == TokenKind::Ident {
+            tag = Some(self.tokenizer.cur_token().clone());
+            self.tokenizer.next_token();
+        }
+
+        if tag != None && !self.tokenizer.cur_token().equal("{") {
+            let ty = self.scope.borrow().find_tag(tag.as_ref().unwrap().literal.clone());
+            if ty == None {
+                if let Some(token) = tag {
+                    token.error("unknown struct type");
+                }
+            }
+            return ty.unwrap();
+        }
+
+        self.tokenizer.next_token();
 
         // Construct a struct object.
         let mut ty = Type::Struct {
@@ -1110,6 +1149,10 @@ impl Parser {
                 }
             }
             *size = align_to(offset, *align);
+        }
+
+        if tag != None {
+            self.push_tag_scope(&tag.unwrap().literal, ty.clone());
         }
 
         ty
