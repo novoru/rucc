@@ -101,9 +101,9 @@ impl Node {
                 let ty = expr.get_type();
                 match ty {
                     Type::Array { base, .. }    =>  {
-                        Type::Ptr{ name: None, base: Box::new(*base.clone()), size: 8 }
+                        Type::Ptr { name: None, base: Box::new(*base.clone()), size: 8, align: 8 }
                     },
-                    _   =>  Type::Ptr{ name: None, base: Box::new(ty.clone()), size: 8 },
+                    _   =>  Type::Ptr { name: None, base: Box::new(ty.clone()), size: 8, align: 8 },
                 }
                 
             },
@@ -184,10 +184,11 @@ pub struct Env {
     pub stack_size: u32,
 }
 
+fn align_to(n: u32, align: u32) -> u32 {
+    (n + align - 1) / align * align
+}
+
 impl Env {
-    fn align_to(&self, n: u32, align: u32) -> u32 {
-        (n + align - 1) / align * align
-    }
 
     pub fn add_var(&mut self, ty: &Type, init_data: Option<Vec<char>>, token: &Token, is_local: bool, scope: &Scope) -> Obj {
         if scope.find_svar(&ty.get_name().unwrap()) != None {
@@ -200,7 +201,7 @@ impl Env {
         }
         let obj = Obj { offset, ty: ty.clone(), init_data, is_local };
         self.objs.push(obj.clone());
-        self.stack_size = self.align_to(offset, 16);
+        self.stack_size = align_to(offset, 16);
 
         obj
     }
@@ -412,6 +413,7 @@ impl Parser {
             name:   ty.get_name(),
             params: Some(params.into_iter().map(|elm| elm.0).collect::<Vec<Type>>()),
             ret_ty: Box::new(ty),
+            align:  1,
         }
     }
 
@@ -444,8 +446,9 @@ impl Parser {
             return Type::Array {
                 name:   ty.get_name(),
                 base:   Box::new(ty.clone()),
-                size:   ty.get_size()*sz,
+                size:   ty.clone().get_size()*sz,
                 len:    sz,
+                align:  ty.get_align(),
             };
         }
         self.tokenizer.next_token();
@@ -458,9 +461,10 @@ impl Parser {
         let mut ty = ty.clone();
         while self.tokenizer.consume("*") {
             ty = Type::Ptr {
-                name: None,
-                base: Box::new(ty.clone()),
-                size: 8,
+                name:   None,
+                base:   Box::new(ty.clone()),
+                size:   8,
+                align:  8,
             };
         }
          
@@ -1090,16 +1094,22 @@ impl Parser {
             name:       None,
             members:    self.struct_members(),
             size:       0,
+            align:      1,
         };
 
         // Assign offsets within the struct to member.
-        if let Type::Struct { ref mut members, ref mut size, .. } = ty {
-            let mut offset = 0;
+        let mut offset = 0;
+        if let Type::Struct { ref mut members, ref mut size, ref mut align, .. } = ty {
             for member in members {
+                offset = align_to(offset, member.ty.get_align());
                 member.offset = offset;
                 offset += member.ty.get_size();
+
+                if *align < member.ty.get_align() {
+                    *align = member.ty.get_align();
+                }
             }
-            *size = offset;
+            *size = align_to(offset, *align);
         }
 
         ty
@@ -1121,7 +1131,7 @@ impl Parser {
 
     fn struct_ref(&mut self, lhs: &Node) -> Option<Node> {
         let token = self.tokenizer.cur_token();
-        if let Type::Struct{..} = lhs.get_type() {
+        if let Type::Struct {..} = lhs.get_type() {
             
         } else {
             lhs.get_token().error("not a struct");
@@ -1265,6 +1275,7 @@ impl Parser {
             name:   None,
             params: None,
             ret_ty: Box::new(ty_int(None)),
+            align:  1,
         }
     }
 

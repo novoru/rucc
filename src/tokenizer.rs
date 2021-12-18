@@ -65,6 +65,7 @@ impl Token {
                 base:   Box::new(ty_char(None)),
                 size:   len,
                 len:    len,
+                align:  8,
             }),
             line:       line,
             lineno:     lineno,
