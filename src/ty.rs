@@ -1,10 +1,18 @@
 #[derive(Debug, Clone, PartialEq)]
+pub struct Member {
+    pub ty:     Type,
+    pub name:   String,
+    pub offset: u32,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub enum Type {
     Char { name: Option<String>, size: u32 },
     Int { name: Option<String>, size: u32 },
     Ptr { name: Option<String>, base: Box<Type>, size: u32 },
     Function { name: Option<String>, params: Option<Vec<Type>> ,ret_ty: Box<Type> },
     Array { name: Option<String>, base: Box<Type>, size: u32, len: u32 },
+    Struct { name: Option<String>, members: Vec<Box<Member>>, size: u32 },
 }
 
 pub fn ty_char(name: Option<String>) -> Type {
@@ -47,7 +55,8 @@ impl Type {
             Type::Char { size, .. }     |
             Type::Int { size, .. }      |
             Type::Ptr { size, .. }      |
-            Type::Array { size, .. }    => *size,
+            Type::Array { size, .. }    |
+            Type::Struct { size, .. }   => *size,
             _   => panic!("dont have the size field: {:?}", self),
         }
     }
@@ -58,7 +67,8 @@ impl Type {
             Type::Int { name, .. }      |
             Type::Ptr { name,.. }       |
             Type::Function { name, .. } |
-            Type::Array { name, .. }    =>  name.clone(),
+            Type::Array { name, .. }    |
+            Type::Struct { name, .. }   =>  name.clone(),
         }
     }
 
@@ -68,7 +78,8 @@ impl Type {
             Type::Int { name, .. }      |
             Type::Ptr { name,.. }       |
             Type::Function { name, .. } |
-            Type::Array { name, .. }    =>  *name = Some(s),
+            Type::Array { name, .. }    |
+            Type::Struct { name, .. }   =>  *name = Some(s),
         }
     }
 

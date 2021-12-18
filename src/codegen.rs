@@ -83,6 +83,10 @@ impl CodeGenerator {
                 self.gen_expr(lhs);
                 self.gen_addr(rhs);
             },
+            Node::Member{ base, member, .. } =>  {
+                self.gen_addr(base);
+                writeln!(self.output, "  add ${}, %rax", member.offset).unwrap();
+            },
             _   =>  node.get_token().error("not an lvalue"),
         }
     }
@@ -175,6 +179,10 @@ impl CodeGenerator {
             Node::Var { ty, .. }    =>  {
                 self.gen_addr(node);
                 self.load(&ty);
+            },
+            Node::Member { .. } =>  {
+                self.gen_addr(node);
+                self.load(&node.get_type());
             },
             Node::StmtExpr (body, ..)   =>  {
                 self.gen_stmt(body);

@@ -17,6 +17,11 @@ pub enum Node {
     Le          { lhs: Box<Node>, rhs: Box<Node>, token: Token },   // <=
     Assign      { lhs: Box<Node>, rhs: Box<Node>, token: Token },   // =
     Comma       { lhs: Box<Node>, rhs: Box<Node>, token: Token },   // ,
+    Member      {
+        base:   Box<Node>,
+        member: Member,
+        token:  Token,
+    },
     Addr        ( Box<Node>, Token ),                               // unary &
     Deref       ( Box<Node>, Token ),                               // unary *
     Return      ( Box<Node>, Token ),                               // "return"
@@ -90,8 +95,9 @@ impl Node {
 
                 ty
             }
-            Node::Comma { rhs, .. } =>  rhs.get_type(),
-            Node::Addr (expr, ..)   =>  {
+            Node::Comma { rhs, .. }     =>  rhs.get_type(),
+            Node::Member { member, ..}    =>  member.ty.clone(),
+            Node::Addr (expr, ..)       =>  {
                 let ty = expr.get_type();
                 match ty {
                     Type::Array { base, .. }    =>  {
@@ -145,6 +151,7 @@ impl Node {
             Node::Le        { token, .. }   |
             Node::Assign    { token, .. }   |
             Node::Comma     { token, .. }   |
+            Node::Member    { token, .. }   |
             Node::Addr      ( .., token )   |
             Node::Deref     ( .., token )   |
             Node::Return    ( .., token )   |
@@ -365,14 +372,22 @@ impl Parser {
         token.literal.to_string()
     }
 
-    // declspec = "char" | "int"
+    // declspec = "char" | "int" | struct-decl
     fn declspec(&mut self) -> Type {
         if self.tokenizer.consume("char") {
             return ty_char(None);
         }
 
-        self.tokenizer.skip("int");
-        ty_int(None)
+        if self.tokenizer.consume("int") {
+            return ty_int(None);
+        }
+
+        if self.tokenizer.consume("struct") {
+            return self.struct_decl();
+        }
+
+        self.tokenizer.cur_token().error("typename expected");
+        panic!();
     }
 
     // func-params = (param ("," param)*)? ")"
@@ -445,7 +460,7 @@ impl Parser {
             ty = Type::Ptr {
                 name: None,
                 base: Box::new(ty.clone()),
-                size: ty.get_size(),
+                size: 8,
             };
         }
          
@@ -508,7 +523,7 @@ impl Parser {
     }
 
     fn is_typename(&self, token: &Token) -> bool {
-       token.equal("char") || token.equal("int")
+       token.equal("char") || token.equal("int") || token.equal("struct")
     }
 
     // stmt = "return" expr ";"
@@ -1039,22 +1054,113 @@ impl Parser {
         self.postfix()
     }
 
-    // postfix = primary ("[" expr "]")*
+    // struct-members = (declspec declarator ("," declarator)* ";")*
+    fn struct_members(&mut self) -> Vec<Box<Member>> {
+        let mut members = Vec::new();
+
+        while !self.tokenizer.cur_token().equal("}") {
+            let basety = self.declspec();
+            let mut i = 0;
+
+            while !self.tokenizer.consume(";") {
+                if i > 0 {
+                    self.tokenizer.skip(",");
+                }
+                let ty = self.declarator(basety.clone());
+                members.push(Box::new(Member {
+                    ty:     ty.clone(),
+                    name:   ty.get_name().unwrap(),
+                    offset: 0,
+                }));
+                i += 1;
+            }
+        }
+        self.tokenizer.next_token();
+
+        members
+
+    }
+
+    // struct-decl = "{" struct-members
+    fn struct_decl(&mut self) -> Type {
+        self.tokenizer.skip("{");
+
+        // Construct a struct object.
+        let mut ty = Type::Struct {
+            name:       None,
+            members:    self.struct_members(),
+            size:       0,
+        };
+
+        // Assign offsets within the struct to member.
+        if let Type::Struct { ref mut members, ref mut size, .. } = ty {
+            let mut offset = 0;
+            for member in members {
+                member.offset = offset;
+                offset += member.ty.get_size();
+            }
+            *size = offset;
+        }
+
+        ty
+    }
+
+    fn get_struct_member(&self, ty: &Type) -> Member {
+        let token = self.tokenizer.cur_token();
+        if let Type::Struct { members, .. } = ty {
+            for member in members {
+                if member.name == token.literal {
+                    return *member.clone();
+                }
+            }
+        }
+
+        token.error("no such member");
+        panic!();
+    }
+
+    fn struct_ref(&mut self, lhs: &Node) -> Option<Node> {
+        let token = self.tokenizer.cur_token();
+        if let Type::Struct{..} = lhs.get_type() {
+            
+        } else {
+            lhs.get_token().error("not a struct");
+            panic!();
+        }
+
+        let node = Node::Member {
+            base:   Box::new(lhs.clone()),
+            member: self.get_struct_member(&lhs.get_type()),
+            token:  token.clone(),
+        };
+
+        Some(node)        
+    }
+
+    // postfix = primary ("[" expr "]" | "." ident)*
     fn postfix(&mut self) -> Option<Node> {
         let mut node = self.primary().unwrap();
 
-        while self.tokenizer.consume("[") {
-            // x[y] is short for *(x+y)
-            let token = self.tokenizer.cur_token().clone();
-            let idx = self.expr().unwrap();
-            self.tokenizer.skip("]");
-            node = Node::Deref(
-                Box::new(self.new_add(node, idx, token.clone()).unwrap()),
-                token,
-            );
-        }
+        loop {
+            if self.tokenizer.consume("[") {
+                let token = self.tokenizer.cur_token().clone();
+                let idx = self.expr().unwrap();
+                self.tokenizer.skip("]");
+                node = Node::Deref(
+                    Box::new(self.new_add(node, idx, token.clone()).unwrap()),
+                    token,
+                );
+                continue;
+            }
 
-        Some(node)
+            if self.tokenizer.consume(".") {
+                node = self.struct_ref(&node).unwrap();
+                self.tokenizer.next_token();
+                continue;
+            }
+
+            return Some(node);
+        }
     }
 
     // function-definition = declspec declarator compound-stmt
