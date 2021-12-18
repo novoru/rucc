@@ -1,3 +1,5 @@
+CFLAGS=-std=c11 -g -fno-common
+
 SRCS=$(wildcard ./src/*.rs)
 EXE=$(./target/debug/rucc)
 TEST_SRCS=$(wildcard test/*.c)

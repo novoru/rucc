@@ -79,6 +79,10 @@ impl CodeGenerator {
             Node::Deref (expr, ..)  =>  {
                 self.gen_expr(expr);
             },
+            Node::Comma { lhs, rhs, .. }    =>  {
+                self.gen_expr(lhs);
+                self.gen_addr(rhs);
+            },
             _   =>  node.get_token().error("not an lvalue"),
         }
     }
@@ -174,6 +178,10 @@ impl CodeGenerator {
             },
             Node::StmtExpr (body, ..)   =>  {
                 self.gen_stmt(body);
+            },
+            Node::Comma { lhs, rhs, .. }    =>  {
+                self.gen_expr(lhs);
+                self.gen_expr(rhs);
             },
             Node::FuncCall { name, args, .. } =>  {
                 for arg in args {

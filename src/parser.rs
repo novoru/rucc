@@ -6,38 +6,48 @@ use crate::ty::*;
 // Ast node type
 #[derive(Debug, Clone, PartialEq)]
 pub enum Node {
-    Add         { lhs: Box<Node>, rhs: Box<Node>, token: Token },     // +
-    Sub         { lhs: Box<Node>, rhs: Box<Node>, token: Token },     // -
-    Mul         { lhs: Box<Node>, rhs: Box<Node>, token: Token },     // *
-    Div         { lhs: Box<Node>, rhs: Box<Node>, token: Token },     // /
-    Neg         ( Box<Node>, Token ),                   // unary -
-    Eq          { lhs: Box<Node>, rhs: Box<Node>, token: Token },     // ==
-    Ne          { lhs: Box<Node>, rhs: Box<Node>, token: Token },     // !=
-    Lt          { lhs: Box<Node>, rhs: Box<Node>, token: Token },     // <
-    Le          { lhs: Box<Node>, rhs: Box<Node>, token: Token },     // <=
-    Assign      { lhs: Box<Node>, rhs: Box<Node>, token: Token },     // =
-    Addr        ( Box<Node>, Token ),                   // unary &
-    Deref       ( Box<Node>, Token ),                   // unary *
-    Return      ( Box<Node>, Token ),                   // "return"
-    If          {                                       // "if"
+    Add         { lhs: Box<Node>, rhs: Box<Node>, token: Token },   // +
+    Sub         { lhs: Box<Node>, rhs: Box<Node>, token: Token },   // -
+    Mul         { lhs: Box<Node>, rhs: Box<Node>, token: Token },   // *
+    Div         { lhs: Box<Node>, rhs: Box<Node>, token: Token },   // /
+    Neg         ( Box<Node>, Token ),                               // unary -
+    Eq          { lhs: Box<Node>, rhs: Box<Node>, token: Token },   // ==
+    Ne          { lhs: Box<Node>, rhs: Box<Node>, token: Token },   // !=
+    Lt          { lhs: Box<Node>, rhs: Box<Node>, token: Token },   // <
+    Le          { lhs: Box<Node>, rhs: Box<Node>, token: Token },   // <=
+    Assign      { lhs: Box<Node>, rhs: Box<Node>, token: Token },   // =
+    Comma       { lhs: Box<Node>, rhs: Box<Node>, token: Token },   // ,
+    Addr        ( Box<Node>, Token ),                               // unary &
+    Deref       ( Box<Node>, Token ),                               // unary *
+    Return      ( Box<Node>, Token ),                               // "return"
+    If          {                                                   // "if"
         cond:   Box<Node>,
         then:   Box<Node>,
         els:    Option<Box<Node>>,
         token:  Token,
     },
-    For         {                                       // "for" of "while"
+    For         {                                                   // "for" of "while"
         init:   Option<Box<Node>>,
         cond:   Option<Box<Node>>,
         inc:    Option<Box<Node>>,
         body:   Box<Node>,
         token:  Token,
     },
-    Block       ( Vec<Box<Node>>, Token ),              // { ... }
-    ExprStmt    ( Box<Node>, Token ),                   // Expression statement
-    StmtExpr    ( Box<Node>, Token ),                   // Statement Expression
-    Var         { name: String, ty: Type, token: Token, obj: Rc<Obj> },             // Variable
-    FuncCall    { name: String, args: Vec<Box<Node>>, token: Token }, // Function call
-    Function    {                                       // Function definition
+    Block       ( Vec<Box<Node>>, Token ),                          // { ... }
+    ExprStmt    ( Box<Node>, Token ),                               // Expression statement
+    StmtExpr    ( Box<Node>, Token ),                               // Statement Expression
+    Var         {                                                   // Variable
+        name: String,
+        ty: Type,
+        token: Token,
+        obj: Rc<Obj>
+    },
+    FuncCall    {                                                   // Function call
+        name: String,
+        args: Vec<Box<Node>>,
+        token: Token
+    },
+    Function    {                                                   // Function definition
         name:   String,
         params: Env,
         body:   Vec<Box<Node>>,
@@ -45,12 +55,12 @@ pub enum Node {
         ret_ty: Option<Type>,
         token:  Token,
     },
-    Program     {                                       // Program
+    Program     {                                                   // Program
         data: Rc<RefCell<Env>>,
         text: Vec<Box<Node>>,
         token:  Token,
     },
-    Num         ( u32, Token ),                         // Integer
+    Num         ( u32, Token ),                                     // Integer
 }
 
 impl Node {
@@ -80,6 +90,7 @@ impl Node {
 
                 ty
             }
+            Node::Comma { rhs, .. } =>  rhs.get_type(),
             Node::Addr (expr, ..)   =>  {
                 let ty = expr.get_type();
                 match ty {
@@ -133,6 +144,7 @@ impl Node {
             Node::Lt        { token, .. }   |
             Node::Le        { token, .. }   |
             Node::Assign    { token, .. }   |
+            Node::Comma     { token, .. }   |
             Node::Addr      ( .., token )   |
             Node::Deref     ( .., token )   |
             Node::Return    ( .., token )   |
@@ -620,9 +632,20 @@ impl Parser {
         return Some(Node::Block(stmts, token))
     }
 
-    // expr = assign
+    // expr = assign ("," expr)?
     fn expr(&mut self) -> Option<Node> {
-        self.assign()
+        let node = self.assign().unwrap();
+        let token = self.tokenizer.cur_token().clone();
+
+        if self.tokenizer.consume(",") {
+            return Some(Node::Comma {
+                lhs:    Box::new(node),
+                rhs:    Box::new(self.expr().unwrap()),
+                token:  token.clone(),
+            });
+        }
+
+        Some(node)
     }
 
     // assign = equality ("=" assign)?
