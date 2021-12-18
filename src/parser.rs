@@ -1190,7 +1190,7 @@ impl Parser {
         Some(node)        
     }
 
-    // postfix = primary ("[" expr "]" | "." ident)*
+    // postfix = primary ("[" expr "]" | "." ident | "->" ident)*
     fn postfix(&mut self) -> Option<Node> {
         let mut node = self.primary().unwrap();
 
@@ -1211,6 +1211,17 @@ impl Parser {
                 self.tokenizer.next_token();
                 continue;
             }
+
+            if self.tokenizer.consume("->") {
+                let token = self.tokenizer.cur_token().clone();
+                node = Node::Deref(
+                    Box::new(node),
+                    token,
+                );
+                node = self.struct_ref(&node).unwrap();
+                self.tokenizer.next_token();
+                continue;
+            };
 
             return Some(node);
         }

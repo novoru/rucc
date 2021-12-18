@@ -5,6 +5,10 @@ static KWDS: &'static [&str] = &[
     "return", "if", "for", "while", "int", "sizeof", "char", "struct",
 ];
 
+static KW: &'static [&str] = &[
+    "==", "!=", "<=", ">=", "->",
+];
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum TokenKind {
     Ident,      // Identifiers
@@ -279,15 +283,14 @@ impl Tokenizer {
     }
 
     fn read_punct(&self, s: &str) -> usize {
-        if  s.starts_with("==") || s.starts_with("!=") ||
-            s.starts_with("<=") || s.starts_with(">=") {
-            return 2;
-        }
-
-        if self.ch.is_ascii_punctuation() {
-            1
+        if let Some(kw) = KW.iter().find(|&&x| s.starts_with(x)) {
+            kw.len()
         } else {
-            0
+            if self.ch.is_ascii_punctuation() {
+                1
+            } else {
+                0
+            }
         }
     }
 
