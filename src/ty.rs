@@ -21,7 +21,7 @@ pub fn ty_char(name: Option<String>) -> Type {
 }
 
 pub fn ty_int(name: Option<String>) -> Type {
-    Type::Int { name: name, size: 8, align: 8 }
+    Type::Int { name: name, size: 4, align: 4 }
 }
 
 impl Type {
@@ -48,6 +48,18 @@ impl Type {
             Type::Ptr   {..}    |
             Type::Array {..}    =>  true,
             _                   =>  false,
+        }
+    }
+
+    pub fn set_size(&mut self, sz: u32) {
+        match self {
+            Type::Char      { size, .. }    |
+            Type::Int       { size, .. }    |
+            Type::Ptr       { size, .. }    |
+            Type::Array     { size, .. }    |
+            Type::Struct    { size, .. }    |
+            Type::Union     { size, .. }    => *size = sz,
+            _   => panic!("dont have the size field: {:?}", self),
         }
     }
 

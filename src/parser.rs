@@ -46,7 +46,7 @@ pub enum Node {
         name: String,
         ty: Type,
         token: Token,
-        obj: Rc<Obj>
+        obj: Rc<RefCell<Obj>>
     },
     FuncCall    {                                                   // Function call
         name: String,
@@ -181,7 +181,7 @@ pub struct Obj {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Env {
     pub parent:     Option<Rc<RefCell<Env>>>,
-    pub objs:       Vec<Obj>,   // variables
+    pub objs:       Vec<Rc<RefCell<Obj>>>,   // variables
     pub stack_size: u32,
 }
 
@@ -191,27 +191,33 @@ fn align_to(n: u32, align: u32) -> u32 {
 
 impl Env {
 
-    pub fn add_var(&mut self, ty: &Type, init_data: Option<Vec<char>>, token: &Token, is_local: bool, scope: &Scope) -> Obj {
+    pub fn add_var(&mut self, ty: &Type, init_data: Option<Vec<char>>, token: &Token, is_local: bool, scope: &Scope) -> Rc<RefCell<Obj>> {
         if scope.find_svar(&ty.get_name().unwrap()) != None {
             token.error(&format!("redefinition of '{}'", &ty.get_name().unwrap()));
         }
 
         let mut offset = ty.get_size();
         for obj in &mut self.objs {
-            offset += obj.ty.get_size();
+            obj.borrow_mut().offset += ty.get_size();
+            offset += obj.borrow().ty.get_size();
         }
-        let obj = Obj { offset, ty: ty.clone(), init_data, is_local };
-        self.objs.push(obj.clone());
+        
+        let obj = Rc::new(RefCell::new( Obj {
+            offset: ty.get_size(),
+            ty:     ty.clone(),
+            init_data, is_local
+        }));
+        self.objs.push(Rc::clone(&obj));
         self.stack_size = align_to(offset, 16);
 
         obj
     }
 
     // find variable from local and global
-    pub fn find_var(&self, name: &str) -> Option<Obj> {
+    pub fn find_var(&self, name: &str) -> Option<Rc<RefCell<Obj>>> {
         for obj in self.objs.iter().rev() {
-            if obj.ty.get_name().unwrap() == name {
-                return Some(obj.clone())
+            if obj.borrow().ty.get_name().unwrap() == name {
+                return Some(Rc::clone(obj))
             }
         }
 
@@ -223,10 +229,10 @@ impl Env {
     }
     
     // find variable from local
-    pub fn find_lvar(&self, name: &str) -> Option<Obj> {
+    pub fn find_lvar(&self, name: &str) -> Option<Rc<RefCell<Obj>>> {
         for obj in &self.objs {
-            if obj.ty.get_name().unwrap() == name {
-                return Some(obj.clone())
+            if obj.borrow().ty.get_name().unwrap() == name {
+                return Some(Rc::clone(obj))
             }
         }
 
@@ -241,15 +247,15 @@ impl Env {
 #[derive(Debug)]
 pub struct Scope {
     parent: Option<Rc<RefCell<Scope>>>,
-    objs:   Vec<Rc<Obj>>,
+    objs:   Vec<Rc<RefCell<Obj>>>,
     tags:   HashMap<String, Type>,   // struct tags or union tags
 }
 
 impl Scope {
-    pub fn find_lvar(&self, name: &str) -> Option<Obj> {
+    pub fn find_lvar(&self, name: &str) -> Option<Rc<RefCell<Obj>>> {
         for obj in &self.objs {
-            if obj.ty.get_name().unwrap() == name {
-                return Some(obj.as_ref().clone());
+            if obj.borrow().ty.get_name().unwrap() == name {
+                return Some(Rc::clone(obj));
             }
         }
 
@@ -261,10 +267,10 @@ impl Scope {
     }
 
     // find variable from scope
-    pub fn find_svar(&self, name: &str) -> Option<Obj> {
+    pub fn find_svar(&self, name: &str) -> Option<Rc<RefCell<Obj>>> {
         for obj in &self.objs {
-            if obj.ty.get_name().unwrap() == name {
-                return Some(obj.as_ref().clone());
+            if obj.borrow().ty.get_name().unwrap() == name {
+                return Some(Rc::clone(obj));
             }
         }
 
@@ -329,7 +335,7 @@ impl Parser {
         };
     }
 
-    fn push_scope(&mut self, obj: Rc<Obj>) {
+    fn push_scope(&mut self, obj: Rc<RefCell<Obj>>) {
         self.scope.borrow_mut().objs.push(Rc::clone(&obj));
     }
 
@@ -337,16 +343,16 @@ impl Parser {
         self.scope.borrow_mut().tags.insert(name.to_string(), tag);
     }
 
-    fn new_lvar(&mut self, ty: &Type, token: &Token) -> Obj {
+    fn new_lvar(&mut self, ty: &Type, token: &Token) -> Rc<RefCell<Obj>> {
         let obj = (*self.local).borrow_mut().add_var(ty, None, token, true, &self.scope.borrow());
-        self.push_scope(Rc::new(obj.clone()));
+        self.push_scope(Rc::clone(&obj));
 
         obj
     }
 
-    fn new_gvar(&mut self, ty: &Type, token: &Token) -> Obj {
+    fn new_gvar(&mut self, ty: &Type, token: &Token) -> Rc<RefCell<Obj>> {
         let obj = self.global.borrow_mut().add_var(&ty, None, &token, false, &self.scope.borrow());
-        self.push_scope(Rc::new(obj.clone()));
+        self.push_scope(Rc::clone(&obj));
 
         obj
     }
@@ -367,7 +373,7 @@ impl Parser {
         s
     }
 
-    fn new_anon_gvar(&mut self, token: Token, ty: Type) -> Obj {
+    fn new_anon_gvar(&mut self, token: Token, ty: Type) -> Rc<RefCell<Obj>> {
         let mut ty = ty.clone();
         ty.set_name(self.new_unique_name());
         let obj = self.global.borrow_mut().add_var(
@@ -377,12 +383,12 @@ impl Parser {
             false,
             &self.scope.borrow()
         );
-        self.push_scope(Rc::new(obj.clone()));
+        self.push_scope(Rc::clone(&obj));
 
         obj
     }
 
-    fn new_string_literal(&mut self, token: Token, ty: Type) -> Obj {
+    fn new_string_literal(&mut self, token: Token, ty: Type) -> Rc<RefCell<Obj>> {
         self.new_anon_gvar(token, ty)
     }
 
@@ -520,7 +526,7 @@ impl Parser {
             let tok_lhs = self.tokenizer.cur_token().clone();
             let ty = self.declarator(basety.clone());
             let name = ty.get_name().unwrap();
-            let obj = Rc::new(self.new_lvar(&ty, &tok_lhs));
+            let obj = Rc::clone(&self.new_lvar(&ty, &tok_lhs));
 
             if !self.tokenizer.consume("=") {
                 continue;
@@ -858,7 +864,7 @@ impl Parser {
             rhs = Node::Mul {
                 lhs: Box::new(rhs.clone()),
                 rhs: Box::new(Node::Num(
-                    lhs.get_type().get_size(),
+                    lhs.get_type().get_base().get_size(),
                     rhs.clone().get_token().clone(),
                 )),
                 token: rhs.get_token().clone(),
@@ -992,9 +998,9 @@ impl Parser {
 
             return Some(Node::Var{
                 name,
-                ty:     obj.ty.clone(),
+                ty:     obj.borrow().ty.clone(),
                 token,
-                obj:    Rc::new(obj),
+                obj:    Rc::clone(&obj),
             });
         }
 
@@ -1003,10 +1009,10 @@ impl Parser {
             self.tokenizer.next_token();
             let ty = token.clone().ty.unwrap();
             return Some(Node::Var {
-                name:   var.ty.get_name().unwrap(),
+                name:   var.clone().borrow().ty.get_name().unwrap(),
                 ty:     ty,
                 token,
-                obj:    Rc::new(var),
+                obj:    Rc::clone(&var),
             })
         }
 

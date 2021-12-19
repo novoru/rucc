@@ -1,10 +1,15 @@
 use std::rc::Rc;
 use std::io::Write;
+use std::cell::RefCell;
 use crate::parser::{ Node, Obj };
 use crate::ty::Type;
 
 static ARGREG8: &'static [&str] = &[
     "%dil", "%sil", "%dl", "%cl", "%r8b", "%r9b"
+];
+
+static ARGREG32: &'static [&str] = &[
+    "%edi", "%esi", "%edx", "%ecx", "%r8d", "%r9d"
 ];
 
 static ARGREG64: &'static [&str] = &[
@@ -50,10 +55,11 @@ impl CodeGenerator {
             _   =>  (),
         }
 
-        if ty.get_size() == 1 {
-            writeln!(self.output, "  movsbq (%rax), %rax").unwrap();
-        } else {
-            writeln!(self.output, "  mov (%rax), %rax").unwrap();
+
+        match ty.get_size() {
+            1   =>  writeln!(self.output, "  movsbq (%rax), %rax").unwrap(),
+            4   =>  writeln!(self.output, "  movsxd (%rax), %rax").unwrap(),
+            _   =>  writeln!(self.output, "  mov (%rax), %rax").unwrap(),
         }
     }
 
@@ -72,10 +78,10 @@ impl CodeGenerator {
             _   =>  (),
         }
 
-        if ty.get_size() == 1 {
-            writeln!(self.output, "  mov %al, (%rdi)").unwrap();
-        } else {
-            writeln!(self.output, "  mov %rax, (%rdi)").unwrap();
+        match ty.get_size() {
+            1   =>  writeln!(self.output, "  mov %al, (%rdi)").unwrap(),
+            4   =>  writeln!(self.output, "  mov %eax, (%rdi)").unwrap(),
+            _   =>  writeln!(self.output, "  mov %rax, (%rdi)").unwrap(),
         }
     }
 
@@ -84,10 +90,10 @@ impl CodeGenerator {
     fn gen_addr(&mut self, node: &Node) {
         match node {
             Node::Var { obj, .. }  =>  {
-                if obj.is_local {
-                    writeln!(self.output, "  lea {}(%rbp), %rax", -(obj.offset as i32)).unwrap();
+                if obj.borrow().is_local {
+                    writeln!(self.output, "  lea {}(%rbp), %rax", -(obj.borrow().offset as i32)).unwrap();
                 } else {
-                    writeln!(self.output, "  lea {}(%rip), %rax", obj.ty.get_name().unwrap()).unwrap();
+                    writeln!(self.output, "  lea {}(%rip), %rax", obj.borrow().ty.get_name().unwrap()).unwrap();
                 }
                 return;
             },
@@ -282,6 +288,15 @@ impl CodeGenerator {
         }
     }
 
+    fn store_gp(&mut self, r: usize, offset: i32, sz: u32) {
+        match sz {
+            1   =>  writeln!(self.output, "  mov {}, {}(%rbp)", ARGREG8[r], -offset).unwrap(),
+            4   =>  writeln!(self.output, "  mov {}, {}(%rbp)", ARGREG32[r], -offset).unwrap(), 
+            8   =>  writeln!(self.output, "  mov {}, {}(%rbp)", ARGREG64[r], -offset).unwrap(),
+            _   =>  panic!("internal error"),
+        }
+    }
+
     fn gen_func(&mut self, func: &Node) {
         self.cur_func = Some(Rc::new(func.clone()));
         match func {
@@ -297,14 +312,8 @@ impl CodeGenerator {
                 writeln!(self.output, "  sub ${}, %rsp", locals.borrow().stack_size).unwrap();
                 
                 // Save passed-by-register arguments to the stack
-                let mut i = 0;
-                for param in &params.objs {
-                    if param.ty.get_size() == 1 {
-                        writeln!(self.output, "  mov {}, {}(%rbp)", ARGREG8[i], -(param.offset as i32)).unwrap();
-                    } else {
-                        writeln!(self.output, "  mov {}, {}(%rbp)", ARGREG64[i], -(param.offset as i32)).unwrap();
-                    }
-                    i += 1;
+                for (i, param) in params.objs.iter().enumerate() {
+                    self.store_gp(i, param.borrow().offset as i32, param.borrow().ty.get_size());
                 }
 
                 // Emit code
@@ -322,18 +331,18 @@ impl CodeGenerator {
         }
     }
 
-    fn emit_data(&mut self, objs: &Vec<Obj>) {
+    fn emit_data(&mut self, objs: &Vec<Rc<RefCell<Obj>>>) {
         for var in objs {
             writeln!(self.output, "  .data").unwrap();
-            writeln!(self.output, "  .globl {}", var.ty.get_name().unwrap()).unwrap();
-            writeln!(self.output, "{}:", var.ty.get_name().unwrap()).unwrap();
+            writeln!(self.output, "  .globl {}", var.borrow().ty.get_name().unwrap()).unwrap();
+            writeln!(self.output, "{}:", var.borrow().ty.get_name().unwrap()).unwrap();
 
-            if let Some(init_data) = &var.init_data {
+            if let Some(init_data) = &var.borrow().init_data {
                 for ch in init_data {
                     writeln!(self.output, "  .byte {}", *ch as u32).unwrap();
                 }
             } else {
-                writeln!(self.output, "  .zero {}", var.ty.get_size()).unwrap();
+                writeln!(self.output, "  .zero {}", var.borrow().ty.get_size()).unwrap();
             }
         }
     }
