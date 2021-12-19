@@ -69,7 +69,7 @@ fn main() {
     let input = open_file(path.to_string());
 
     let mut parser = Parser::new(&input);
-    let mut prog = parser.parse().unwrap();
+    let mut prog = parser.parse();
 
     let output: Box<dyn Write> = if let Some(output_file) = opt.opt_o {
         Box::new(std::fs::File::create(output_file).unwrap())

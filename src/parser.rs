@@ -532,7 +532,7 @@ impl Parser {
     }
 
     // declaration = declspec (declarator ("=" expr)? ("," declarator ("=" expr)?)*)? ";"
-    fn declaration(&mut self) -> Option<Node> {
+    fn declaration(&mut self) -> Node {
         let tok_ty = self.tokenizer.cur_token().clone();
         let basety = self.declspec();
         let mut decls = Vec::new();
@@ -561,7 +561,7 @@ impl Parser {
                 obj:    Rc::clone(&obj),
             };
 
-            let rhs = self.assign().unwrap();
+            let rhs = self.assign();
             let node = Node::Assign {
                 lhs: Box::new(lhs),
                 rhs: Box::new(rhs),
@@ -573,10 +573,10 @@ impl Parser {
             )));
         }
 
-        Some(Node::Block(
+        Node::Block(
             decls,
             tok_ty,
-        ))
+        )
     }
 
     fn is_typename(&self, token: &Token) -> bool {
@@ -590,48 +590,48 @@ impl Parser {
     //      | "while" "(" expr ")" stmt
     //      | compound-stmt
     //      | expr-stmt
-    fn stmt(&mut self) -> Option<Node> {
+    fn stmt(&mut self) -> Node {
         let token = self.tokenizer.cur_token().clone();
         if self.tokenizer.consume("return") {
             let node = Node::Return(
-                Box::new(self.expr().unwrap()),
+                Box::new(self.expr()),
                 token,
             );
             self.tokenizer.skip(";");
-            return Some(node);
+            return node;
         }
 
         if self.tokenizer.consume("if") {
             self.tokenizer.skip("(");
-            let cond = Box::new(self.expr().unwrap());
+            let cond = Box::new(self.expr());
             self.tokenizer.skip(")");
-            let then = Box::new(self.stmt().unwrap());
+            let then = Box::new(self.stmt());
             
             let els = if self.tokenizer.consume("else") {
-                Some(Box::new(self.stmt().unwrap()))
+                Some(Box::new(self.stmt()))
             } else {
                 None
             };
 
-            return Some(Node::If {
+            return Node::If {
                 cond,
                 then,
                 els,
                 token,
-             });
+             };
         }
 
         if self.tokenizer.consume("for") {
             self.tokenizer.skip("(");
 
             let init = if !self.tokenizer.consume(";") {
-                Some(Box::new(self.expr_stmt().unwrap()))
+                Some(Box::new(self.expr_stmt()))
             } else {
                 None
             };
 
             let cond = if !self.tokenizer.cur_token().equal(";") {
-                Some(Box::new(self.expr().unwrap()))
+                Some(Box::new(self.expr()))
             } else {
                 None
             };
@@ -639,43 +639,43 @@ impl Parser {
             self.tokenizer.skip(";");
 
             let inc = if !self.tokenizer.cur_token().equal(")") {
-                Some(Box::new(self.expr().unwrap()))
+                Some(Box::new(self.expr()))
             } else {
                 None
             };
 
             self.tokenizer.skip(")");
 
-            let body = Box::new(self.stmt().unwrap());
+            let body = Box::new(self.stmt());
 
-            return Some(Node::For {
+            return Node::For {
                 init,
                 cond,
                 inc,
                 body,
                 token,
-             })
+             }
         }
 
         if self.tokenizer.consume("while") {
             self.tokenizer.skip("(");
             let cond = if !self.tokenizer.cur_token().equal(")") {
-                Some(Box::new(self.expr().unwrap()))
+                Some(Box::new(self.expr()))
             } else {
                 None
             };
 
             self.tokenizer.skip(")");
 
-            let body = Box::new(self.stmt().unwrap());
+            let body = Box::new(self.stmt());
 
-            return Some(Node::For {
+            return Node::For {
                 init: None,
                 cond,
                 inc: None,
                 body,
                 token,
-             });
+             };
         }
 
         if token.equal("{") {
@@ -686,7 +686,7 @@ impl Parser {
     }
 
     // compound-stmt = "{" (declaration | stmt)* "}"
-    fn compound_stmt(&mut self) -> Option<Node> {
+    fn compound_stmt(&mut self) -> Node {
         let token = self.tokenizer.cur_token().clone();
         self.tokenizer.skip("{");
         let mut stmts = Vec::new();
@@ -694,78 +694,78 @@ impl Parser {
 
         while !self.tokenizer.consume("}") {
             if self.is_typename(&self.tokenizer.cur_token()) {
-                stmts.push(Box::new(self.declaration().unwrap()))
+                stmts.push(Box::new(self.declaration()))
             } else {
-                stmts.push(Box::new(self.stmt().unwrap()));
+                stmts.push(Box::new(self.stmt()));
             }
         }
 
         self.leave_scope();
 
-        return Some(Node::Block(stmts, token))
+        return Node::Block(stmts, token)
     }
 
     // expr = assign ("," expr)?
-    fn expr(&mut self) -> Option<Node> {
-        let node = self.assign().unwrap();
+    fn expr(&mut self) -> Node {
+        let node = self.assign();
         let token = self.tokenizer.cur_token().clone();
 
         if self.tokenizer.consume(",") {
-            return Some(Node::Comma {
+            return Node::Comma {
                 lhs:    Box::new(node),
-                rhs:    Box::new(self.expr().unwrap()),
+                rhs:    Box::new(self.expr()),
                 token:  token.clone(),
-            });
+            };
         }
 
-        Some(node)
+        node
     }
 
     // assign = equality ("=" assign)?
-    fn assign(&mut self) -> Option<Node> {
+    fn assign(&mut self) -> Node {
         let token = self.tokenizer.cur_token().clone();
-        let mut node = self.equality().unwrap();
+        let mut node = self.equality();
 
         if self.tokenizer.consume("=") {
             node = Node::Assign {
                 lhs: Box::new(node),
-                rhs: Box::new(self.assign().unwrap()),
+                rhs: Box::new(self.assign()),
                 token,
             };
         }
 
-        Some(node)
+        node
     }
 
     // expr-stmt = expr? ";"
-    fn expr_stmt(&mut self) -> Option<Node> {
+    fn expr_stmt(&mut self) -> Node {
         if self.tokenizer.consume(";") {
-            return Some(Node::Block(
+            return Node::Block(
                 Vec::new(),
                 self.tokenizer.cur_token().clone(),
-            ));
+            );
         }
 
         let tok_expr = self.tokenizer.cur_token().clone();
         let node = Node::ExprStmt(
-            Box::new(self.expr().unwrap()),
+            Box::new(self.expr()),
             tok_expr,
         );
         self.tokenizer.skip(";");
 
-        Some(node)
+        node
     }
 
     // equality = relational ("==" relational | "!=" relational)*
-    fn equality(&mut self) -> Option<Node> {
-        let mut node = self.relational().unwrap();
+    fn equality(&mut self) -> Node {
+        let mut node = self.relational();
 
         loop {
             let token = self.tokenizer.cur_token().clone();
             if self.tokenizer.consume("==") {
                 node = Node::Eq {
                     lhs: Box::new(node),
-                    rhs: Box::new(self.relational().unwrap()),
+                    rhs: Box::new(self.relational()),
                     token,
                 };
                 continue;
@@ -774,26 +774,26 @@ impl Parser {
             if self.tokenizer.consume("!=") {
                 node = Node::Ne {
                     lhs: Box::new(node),
-                    rhs: Box::new(self.relational().unwrap()),
+                    rhs: Box::new(self.relational()),
                     token,
                 };
                 continue;
             }
             
-            return Some(node);
+            return node;
         }
     }
 
     // relational = add ("<" add | "<=" add | ">" add | ">=" add)*
-    fn relational(&mut self) -> Option<Node> {
-        let mut node = self.add().unwrap();
+    fn relational(&mut self) -> Node {
+        let mut node = self.add();
 
         loop {
             let token = self.tokenizer.cur_token().clone();
             if self.tokenizer.consume("<") {
                 node = Node::Lt {
                     lhs: Box::new(node),
-                    rhs: Box::new(self.add().unwrap()),
+                    rhs: Box::new(self.add()),
                     token,
                 };
                 continue;
@@ -802,7 +802,7 @@ impl Parser {
             if self.tokenizer.consume("<=") {
                 node = Node::Le {
                     lhs: Box::new(node),
-                    rhs: Box::new(self.add().unwrap()),
+                    rhs: Box::new(self.add()),
                     token,
                 };
                 continue;
@@ -810,7 +810,7 @@ impl Parser {
             
             if self.tokenizer.consume(">") {
                 node = Node::Lt {
-                    lhs: Box::new(self.add().unwrap()),
+                    lhs: Box::new(self.add()),
                     rhs: Box::new(node),
                     token,
                 };
@@ -819,14 +819,14 @@ impl Parser {
             
             if self.tokenizer.consume(">=") {
                 node = Node::Le {
-                    lhs: Box::new(self.add().unwrap()),
+                    lhs: Box::new(self.add()),
                     rhs: Box::new(node),
                     token,
                 };
                 continue;
             }
 
-            return Some(node);
+            return node;
         }
     }
 
@@ -835,14 +835,14 @@ impl Parser {
     // so that p+n points to the location n elements (not bytes) ahead of p.
     // In other words, we need to scale an integer value before adding to a
     // pointer value. This function takes care of the scaling.
-    fn new_add(&mut self, mut lhs: Node, mut rhs: Node, token: Token) -> Option<Node> {
+    fn new_add(&mut self, mut lhs: Node, mut rhs: Node, token: Token) -> Node {
         // num + num
         if lhs.get_type().is_num() && rhs.get_type().is_num() {
-            return  Some(Node::Add {
+            return  Node::Add {
                 lhs: Box::new(lhs.clone()),
                 rhs: Box::new(rhs),
                 token,
-            });
+            };
         }
 
         if lhs.get_type().is_ptr() && rhs.get_type().is_ptr() {
@@ -864,21 +864,21 @@ impl Parser {
             )),
             token: rhs.get_token().clone(),
         };
-        return Some(Node::Add {
+        return Node::Add {
             lhs: Box::new(lhs.clone()),
             rhs: Box::new(rhs),
             token,
-        });
+        };
     }
 
-    fn new_sub(&mut self, mut lhs: Node, mut rhs: Node, token: Token) -> Option<Node> {
+    fn new_sub(&mut self, mut lhs: Node, mut rhs: Node, token: Token) -> Node {
         // num - num
         if lhs.get_type().is_num() && rhs.get_type().is_num() {
-            return Some(Node::Sub {
+            return Node::Sub {
                 lhs: Box::new(lhs.clone()),
                 rhs: Box::new(rhs),
                 token,
-            });
+            };
         }
 
         // ptr - num
@@ -891,11 +891,11 @@ impl Parser {
                 )),
                 token: rhs.get_token().clone(),
             };
-            return Some(Node::Sub {
+            return Node::Sub {
                 lhs: Box::new(lhs.clone()),
                 rhs: Box::new(rhs),
                 token,
-            });
+            };
         }
 
         // ptr - ptr, which returns how many elements are between the two.
@@ -905,44 +905,43 @@ impl Parser {
                 rhs: Box::new(rhs),
                 token: token.clone(),
             };
-            return Some(Node::Div {
+            return Node::Div {
                 lhs: Box::new(lhs.clone()),
                 rhs: Box::new(Node::Num(
                     lhs.get_type().get_size(),
                     self.tokenizer.cur_token().clone(),
                 )),
                 token,
-            });
+            };
         }
         token.error("invalid operands");
-
-        None
+        panic!();
     }
 
     // add = mul ("+" mul | "-" mul)*
-    fn add(&mut self) -> Option<Node> {
-        let mut node = self.mul().unwrap();
+    fn add(&mut self) -> Node {
+        let mut node = self.mul();
 
         loop {
             let token = self.tokenizer.cur_token().clone();
             if self.tokenizer.consume("+") {
-                let rhs = self.mul().unwrap().clone();
-                node = self.new_add(node, rhs, token).unwrap();
+                let rhs = self.mul().clone();
+                node = self.new_add(node, rhs, token);
                 continue;
             }
             
             if self.tokenizer.consume("-") {
-                let rhs = self.mul().unwrap().clone();
-                node = self.new_sub(node, rhs, token).unwrap();
+                let rhs = self.mul().clone();
+                node = self.new_sub(node, rhs, token);
                 continue;
             }
 
-            return Some(node);
+            return node;
         }
     }
 
     // funcall = ident "(" (assign ("," assign)*)? ")"
-    fn funcall(&mut self) -> Option<Node> {
+    fn funcall(&mut self) -> Node {
         let mut args = Vec::new();
         let token = self.tokenizer.cur_token().clone();
         let name = self.get_ident();
@@ -955,15 +954,15 @@ impl Parser {
             if i > 0 {
                 self.tokenizer.skip(",");
             }
-            args.push(Box::new(self.assign().unwrap()));
+            args.push(Box::new(self.assign()));
             i += 1;
         }
 
-        Some(Node::FuncCall {
+        Node::FuncCall {
             name,
             args,
             token,
-        })
+        }
     }
 
     // primary = "(" "{" compound-stmt "}" ")"
@@ -972,33 +971,33 @@ impl Parser {
     //         | ident args?
     //         | str
     //         | num
-    fn primary(&mut self) -> Option<Node> {
+    fn primary(&mut self) -> Node {
         if self.tokenizer.cur_token().equal("(") && self.tokenizer.peek_token("{") {
             let token = self.tokenizer.cur_token().clone();
             self.tokenizer.next_token();
             let node = Node::StmtExpr(
-                Box::new(self.compound_stmt().unwrap()),
+                Box::new(self.compound_stmt()),
                 token,
             );
 
             self.tokenizer.skip(")");
-            return Some(node);
+            return node;
         }
 
         if self.tokenizer.consume("(") {
-            let node = self.expr().unwrap();
+            let node = self.expr();
             self.tokenizer.skip(")");
-            return Some(node);
+            return node;
         }
 
         let token = self.tokenizer.cur_token().clone();
 
         if self.tokenizer.consume("sizeof") {
-            let node = self.unary().unwrap();
-            return Some(Node::Num(
+            let node = self.unary();
+            return Node::Num(
                 node.get_type().get_size(),
                 token,
-            ));
+            );
         }
 
         if token.kind == TokenKind::Ident {
@@ -1018,24 +1017,24 @@ impl Parser {
                 panic!();
             };
 
-            return Some(Node::Var{
+            return Node::Var{
                 name,
                 ty:     obj.borrow().ty.clone(),
                 token,
                 obj:    Rc::clone(&obj),
-            });
+            };
         }
 
         if token.kind == TokenKind::Str {
             let var = self.new_string_literal(token.clone(), token.ty.clone().unwrap());
             self.tokenizer.next_token();
             let ty = token.clone().ty.unwrap();
-            return Some(Node::Var {
+            return Node::Var {
                 name:   var.clone().borrow().ty.get_name().unwrap(),
                 ty:     ty,
                 token,
                 obj:    Rc::clone(&var),
-            })
+            };
         }
 
         if token.kind == TokenKind::Num {
@@ -1044,24 +1043,23 @@ impl Parser {
                 token,
             );
             self.tokenizer.next_token();
-            return Some(node);
+            return node;
         }
 
         token.error("expected an expression");
-        
-        None
+        panic!();
     }
 
     // mul = unary ("*" unary | "/" unary)*
-    fn mul(&mut self) -> Option<Node> {
-        let mut node = self.unary().unwrap();
+    fn mul(&mut self) -> Node {
+        let mut node = self.unary();
         
         loop {
             let token = self.tokenizer.cur_token().clone();
             if self.tokenizer.consume("*") {
                 node = Node::Mul {
                     lhs: Box::new(node),
-                    rhs: Box::new(self.unary().unwrap()),
+                    rhs: Box::new(self.unary()),
                     token,
                 };
                 continue;
@@ -1070,43 +1068,43 @@ impl Parser {
             if self.tokenizer.consume("/") {
                 node = Node::Div {
                     lhs: Box::new(node),
-                    rhs: Box::new(self.unary().unwrap()),
+                    rhs: Box::new(self.unary()),
                     token,
                 };
                 continue;
             }
 
-            return Some(node);
+            return node;
         }
     }
 
     // unary = ("+" | "-" | "*" | "&") unary
     //       | postfix
-    fn unary(&mut self) -> Option<Node> {
+    fn unary(&mut self) -> Node {
         let token = self.tokenizer.cur_token().clone();
         if self.tokenizer.consume("+") {
             return self.unary();
         }
 
         if self.tokenizer.consume("-") {
-            return Some(Node::Neg(
-                Box::new(self.unary().unwrap()),
+            return Node::Neg(
+                Box::new(self.unary()),
                 token,
-            ));
+            );
         }
 
         if self.tokenizer.consume("&") {
-            return Some(Node::Addr(
-                Box::new(self.unary().unwrap()),
+            return Node::Addr(
+                Box::new(self.unary()),
                 token,
-            ));
+            );
         }
         
         if self.tokenizer.consume("*") {
-            return Some(Node::Deref(
-                Box::new(self.unary().unwrap()),
+            return Node::Deref(
+                Box::new(self.unary()),
                 token,
-            ));
+            );
         }
 
         self.postfix()
@@ -1262,7 +1260,7 @@ impl Parser {
         }
     }
 
-    fn struct_ref(&mut self, lhs: &Node) -> Option<Node> {
+    fn struct_ref(&mut self, lhs: &Node) -> Node {
         let token = self.tokenizer.cur_token();
 
         match lhs.get_type() {
@@ -1279,27 +1277,27 @@ impl Parser {
             token:  token.clone(),
         };
 
-        Some(node)        
+        node        
     }
 
     // postfix = primary ("[" expr "]" | "." ident | "->" ident)*
-    fn postfix(&mut self) -> Option<Node> {
-        let mut node = self.primary().unwrap();
+    fn postfix(&mut self) -> Node {
+        let mut node = self.primary();
 
         loop {
             if self.tokenizer.consume("[") {
                 let token = self.tokenizer.cur_token().clone();
-                let idx = self.expr().unwrap();
+                let idx = self.expr();
                 self.tokenizer.skip("]");
                 node = Node::Deref(
-                    Box::new(self.new_add(node, idx, token.clone()).unwrap()),
+                    Box::new(self.new_add(node, idx, token.clone())),
                     token,
                 );
                 continue;
             }
 
             if self.tokenizer.consume(".") {
-                node = self.struct_ref(&node).unwrap();
+                node = self.struct_ref(&node);
                 self.tokenizer.next_token();
                 continue;
             }
@@ -1310,17 +1308,17 @@ impl Parser {
                     Box::new(node),
                     token,
                 );
-                node = self.struct_ref(&node).unwrap();
+                node = self.struct_ref(&node);
                 self.tokenizer.next_token();
                 continue;
             };
 
-            return Some(node);
+            return node;
         }
     }
 
     // function-definition = declspec declarator compound-stmt
-    fn function(&mut self, basety: Type) -> Option<Node> {
+    fn function(&mut self, basety: Type) -> Node {
         self.enter_scope();
         let locals = Rc::new(RefCell::new( Env {
             parent:     Some(Rc::clone(&self.global)),
@@ -1340,17 +1338,17 @@ impl Parser {
         };
 
         let mut body = Vec::new();
-        body.push(Box::new(self.compound_stmt().unwrap()));
+        body.push(Box::new(self.compound_stmt()));
 
         self.leave_scope();
-        Some(Node::Function {
+        Node::Function {
             name,
             params,
             body,
             locals: Rc::clone(&self.local),
             ret_ty: Some(ty),
             token,
-        })
+        }
     }
 
     fn global_variables(&mut self, basety: Type) {
@@ -1426,7 +1424,7 @@ impl Parser {
     }
 
     // program = (function-definition | global-variable)*
-    pub fn parse(&mut self) -> Option<Node> {
+    pub fn parse(&mut self) -> Node {
         let token = self.tokenizer.cur_token().clone();
         let mut prog = Vec::new();
         self.enter_scope();
@@ -1435,7 +1433,7 @@ impl Parser {
             let basety = self.declspec();
 
             if self.is_function() {
-                prog.push(Box::new(self.function(basety).unwrap()));
+                prog.push(Box::new(self.function(basety)));
                 continue;
             }
             self.global_variables(basety);
@@ -1443,10 +1441,10 @@ impl Parser {
 
         self.leave_scope();
 
-        Some(Node::Program {
+        Node::Program {
             data:   Rc::clone(&self.global),
             text:   prog,
             token,
-        })
+        }
     }
 }
