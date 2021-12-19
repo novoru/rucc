@@ -13,6 +13,7 @@ pub enum Type {
     Function    { name: Option<String>, params: Option<Vec<Type>> ,ret_ty: Box<Type>, align: u32 },
     Array       { name: Option<String>, base: Box<Type>, size: u32, len: u32, align: u32 },
     Struct      { name: Option<String>, members: Vec<Box<Member>>, size: u32, align: u32 },
+    Union       { name: Option<String>, members: Vec<Box<Member>>, size: u32, align: u32 },
 }
 
 pub fn ty_char(name: Option<String>) -> Type {
@@ -56,7 +57,8 @@ impl Type {
             Type::Int       { size, .. }    |
             Type::Ptr       { size, .. }    |
             Type::Array     { size, .. }    |
-            Type::Struct    { size, .. }   => *size,
+            Type::Struct    { size, .. }    |
+            Type::Union     { size, .. }    => *size,
             _   => panic!("dont have the size field: {:?}", self),
         }
     }
@@ -68,7 +70,8 @@ impl Type {
             Type::Ptr       { name, .. }    |
             Type::Function  { name, .. }    |
             Type::Array     { name, .. }    |
-            Type::Struct    { name, .. }    =>  name.clone(),
+            Type::Struct    { name, .. }    |
+            Type::Union     { name, .. }    =>  name.clone(),
         }
     }
 
@@ -79,7 +82,8 @@ impl Type {
             Type::Ptr       { name, .. }    |
             Type::Function  { name, .. }    |
             Type::Array     { name, .. }    |
-            Type::Struct    { name, .. }    =>  *name = Some(s),
+            Type::Struct    { name, .. }    |
+            Type::Union     { name, .. }   =>  *name = Some(s),
         }
     }
 
@@ -98,7 +102,8 @@ impl Type {
             Type::Ptr       { align, .. }   |
             Type::Function  { align, .. }   |
             Type::Array     { align, .. }   |
-            Type::Struct    { align, .. }   =>  *align = val,
+            Type::Struct    { align, .. }   |
+            Type::Union     { align, .. }   =>  *align = val,
         }
     }
 
@@ -109,7 +114,8 @@ impl Type {
             Type::Ptr       { align, .. }   |
             Type::Function  { align, .. }   |
             Type::Array     { align, .. }   |
-            Type::Struct    { align, .. }   =>  *align,
+            Type::Struct    { align, .. }   |
+            Type::Union     { align, .. }   =>  *align,
         }
     }
 }

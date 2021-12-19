@@ -242,7 +242,7 @@ impl Env {
 pub struct Scope {
     parent: Option<Rc<RefCell<Scope>>>,
     objs:   Vec<Rc<Obj>>,
-    tags:   HashMap<String, Type>,   // struct tags
+    tags:   HashMap<String, Type>,   // struct tags or union tags
 }
 
 impl Scope {
@@ -408,6 +408,10 @@ impl Parser {
             return self.struct_decl();
         }
 
+        if self.tokenizer.consume("union") {
+            return self.union_decl();
+        }
+
         self.tokenizer.cur_token().error("typename expected");
         panic!();
     }
@@ -548,7 +552,8 @@ impl Parser {
     }
 
     fn is_typename(&self, token: &Token) -> bool {
-       token.equal("char") || token.equal("int") || token.equal("struct")
+       token.equal("char") || token.equal("int") || token.equal("struct") ||
+       token.equal("union")
     }
 
     // stmt = "return" expr ";"
@@ -1158,27 +1163,86 @@ impl Parser {
         ty
     }
 
-    fn get_struct_member(&self, ty: &Type) -> Member {
-        let token = self.tokenizer.cur_token();
-        if let Type::Struct { members, .. } = ty {
-            for member in members {
-                if member.name == token.literal {
-                    return *member.clone();
-                }
-            }
+    // union-decl = ident? "{" struct-members
+    fn union_decl(&mut self) -> Type {
+
+        // Read a struct tag.
+        let mut tag = None;
+        if self.tokenizer.cur_token().kind == TokenKind::Ident {
+            tag = Some(self.tokenizer.cur_token().clone());
+            self.tokenizer.next_token();
         }
 
-        token.error("no such member");
-        panic!();
+        if tag != None && !self.tokenizer.cur_token().equal("{") {
+            let ty = self.scope.borrow().find_tag(tag.as_ref().unwrap().literal.clone());
+            if ty == None {
+                if let Some(token) = tag {
+                    token.error("unknown union type");
+                }
+            }
+            return ty.unwrap();
+        }
+
+        self.tokenizer.next_token();
+
+        // Construct a union object.
+        let mut ty = Type::Union {
+            name:       None,
+            members:    self.struct_members(),
+            size:       0,
+            align:      1,
+        };
+
+        // Assign offsets within the struct to member.
+        if let Type::Union { ref mut members, ref mut size, ref mut align, .. } = ty {
+            for member in members {
+                if *align < member.ty.get_align() {
+                    *align = member.ty.get_align();
+                }
+                if *size < member.ty.get_size() {
+                    *size = member.ty.get_size();
+                }
+            }
+            *size = align_to(*size, *align);
+        }
+
+        if tag != None {
+            self.push_tag_scope(&tag.unwrap().literal, ty.clone());
+        }
+
+        ty
+    }
+
+    fn get_struct_member(&self, ty: &Type) -> Member {
+        let token = self.tokenizer.cur_token();
+
+        match ty {
+            Type::Struct    { members, .. } |
+            Type::Union     { members, .. } => {
+                for member in members {
+                    if member.name == token.literal {
+                        return *member.clone();
+                    }
+                }
+                token.error("no such member");
+                panic!();
+            },
+            _   => {
+                token.error("no such member");
+                panic!();
+            },
+        }
     }
 
     fn struct_ref(&mut self, lhs: &Node) -> Option<Node> {
         let token = self.tokenizer.cur_token();
-        if let Type::Struct {..} = lhs.get_type() {
-            
-        } else {
-            lhs.get_token().error("not a struct");
-            panic!();
+
+        match lhs.get_type() {
+            Type::Struct    {..}    |
+            Type::Union     {..}    => (),
+            _   =>{
+                lhs.get_token().error("not a struct nor union");
+            },
         }
 
         let node = Node::Member {

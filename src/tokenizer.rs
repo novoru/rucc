@@ -2,7 +2,7 @@ use std::process;
 use crate::ty::*;
 
 static KWDS: &'static [&str] = &[
-    "return", "if", "for", "while", "int", "sizeof", "char", "struct",
+    "return", "if", "for", "while", "int", "sizeof", "char", "struct", "union",
 ];
 
 static KW: &'static [&str] = &[
