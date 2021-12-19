@@ -495,7 +495,7 @@ impl Parser {
         ty
     }
 
-    // declarator = "*"* ident type-suffix
+    // declarator = "*"* ("(" ident ")" | "(" declarator ")" | ident) type-suffix
     fn declarator(&mut self, ty: Type) -> Type {
         let mut ty = ty.clone();
         while self.tokenizer.consume("*") {
@@ -505,6 +505,20 @@ impl Parser {
                 size:   8,
                 align:  8,
             };
+        }
+
+        if self.tokenizer.consume("(") {
+            let start = self.tokenizer.idx;
+            self.declarator(ty.clone());
+            if !self.tokenizer.cur_token().equal(")") {
+                self.tokenizer.cur_token().error("expected ')'");
+            }
+            ty = self.type_suffix(ty);
+            let end = self.tokenizer.idx;
+            self.tokenizer.idx = start;
+            ty = self.declarator(ty);
+            self.tokenizer.idx = end;
+            return ty;
         }
          
         let token = self.tokenizer.cur_token().clone();
