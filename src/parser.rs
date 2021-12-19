@@ -406,6 +406,10 @@ impl Parser {
             return ty_char(None);
         }
 
+        if self.tokenizer.consume("short") {
+            return ty_short(None);
+        }
+
         if self.tokenizer.consume("int") {
             return ty_int(None);
         }

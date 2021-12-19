@@ -8,6 +8,10 @@ static ARGREG8: &'static [&str] = &[
     "%dil", "%sil", "%dl", "%cl", "%r8b", "%r9b"
 ];
 
+static ARGREG16: &'static [&str] = &[
+    "%di", "%si", "%dx", "%cx", "%r8w", "%r9w"
+];
+
 static ARGREG32: &'static [&str] = &[
     "%edi", "%esi", "%edx", "%ecx", "%r8d", "%r9d"
 ];
@@ -58,6 +62,7 @@ impl CodeGenerator {
 
         match ty.get_size() {
             1   =>  writeln!(self.output, "  movsbq (%rax), %rax").unwrap(),
+            2   =>  writeln!(self.output, "  movswq (%rax), %rax").unwrap(),
             4   =>  writeln!(self.output, "  movsxd (%rax), %rax").unwrap(),
             _   =>  writeln!(self.output, "  mov (%rax), %rax").unwrap(),
         }
@@ -80,6 +85,7 @@ impl CodeGenerator {
 
         match ty.get_size() {
             1   =>  writeln!(self.output, "  mov %al, (%rdi)").unwrap(),
+            2   =>  writeln!(self.output, "  mov %ax, (%rdi)").unwrap(),
             4   =>  writeln!(self.output, "  mov %eax, (%rdi)").unwrap(),
             _   =>  writeln!(self.output, "  mov %rax, (%rdi)").unwrap(),
         }
@@ -291,6 +297,7 @@ impl CodeGenerator {
     fn store_gp(&mut self, r: usize, offset: i32, sz: u64) {
         match sz {
             1   =>  writeln!(self.output, "  mov {}, {}(%rbp)", ARGREG8[r], -offset).unwrap(),
+            2   =>  writeln!(self.output, "  mov {}, {}(%rbp)", ARGREG16[r], -offset).unwrap(),
             4   =>  writeln!(self.output, "  mov {}, {}(%rbp)", ARGREG32[r], -offset).unwrap(), 
             8   =>  writeln!(self.output, "  mov {}, {}(%rbp)", ARGREG64[r], -offset).unwrap(),
             _   =>  panic!("internal error"),

@@ -8,6 +8,7 @@ pub struct Member {
 #[derive(Debug, Clone, PartialEq)]
 pub enum Type {
     Char        { name: Option<String>, size: u64, align: u64 },
+    Short       { name: Option<String>, size: u64, align: u64 },
     Int         { name: Option<String>, size: u64, align: u64 },
     Long        { name: Option<String>, size: u64, align: u64 },
     Ptr         { name: Option<String>, base: Box<Type>, size: u64, align: u64 },
@@ -18,26 +19,37 @@ pub enum Type {
 }
 
 pub fn ty_char(name: Option<String>) -> Type {
-    Type::Char { name: name, size: 1, align: 1 }
+    Type::Char  { name: name, size: 1, align: 1 }
+}
+
+pub fn ty_short(name: Option<String>) -> Type {
+    Type::Short { name: name, size: 2, align: 2 }
 }
 
 pub fn ty_int(name: Option<String>) -> Type {
-    Type::Int { name: name, size: 4, align: 4 }
+    Type::Int   { name: name, size: 4, align: 4 }
 }
 
 pub fn ty_long(name: Option<String>) -> Type {
-    Type::Int { name: name, size: 8, align: 8 }
+    Type::Long  { name: name, size: 8, align: 8 }
 }
 
 impl Type {
     pub fn is_num(&self) -> bool {
-        self.is_char() || self.is_integer() || self.is_long()
+        self.is_char() || self.is_short() || self.is_integer() || self.is_long()
     }
 
     pub fn is_char(&self) -> bool {
         match self {
             Type::Char {..} =>  true,
             _               =>  false,
+        }
+    }
+
+    pub fn is_short(&self) -> bool {
+        match self {
+            Type::Short {..}    =>  true,
+            _                   =>  false,
         }
     }
 
@@ -66,6 +78,7 @@ impl Type {
     pub fn set_size(&mut self, sz: u64) {
         match self {
             Type::Char      { size, .. }    |
+            Type::Short     { size, .. }    |
             Type::Int       { size, .. }    |
             Type::Long      { size, .. }    |
             Type::Ptr       { size, .. }    |
@@ -79,7 +92,9 @@ impl Type {
     pub fn get_size(&self) -> u64 {
         match self {
             Type::Char      { size, .. }    |
+            Type::Short     { size, .. }    |
             Type::Int       { size, .. }    |
+            Type::Long      { size, .. }    |
             Type::Ptr       { size, .. }    |
             Type::Array     { size, .. }    |
             Type::Struct    { size, .. }    |
@@ -91,6 +106,7 @@ impl Type {
     pub fn get_name(&self) -> Option<String> {
         match self {
             Type::Char      { name, .. }    |
+            Type::Short     { name, .. }    |
             Type::Int       { name, .. }    |
             Type::Long      { name, .. }    |
             Type::Ptr       { name, .. }    |
@@ -104,6 +120,7 @@ impl Type {
     pub fn set_name(&mut self, s: String) {
         match self {
             Type::Char      { name, .. }    |
+            Type::Short     { name, .. }    |
             Type::Int       { name, .. }    |
             Type::Long      { name, .. }    |
             Type::Ptr       { name, .. }    |
@@ -125,6 +142,7 @@ impl Type {
     pub fn set_align(&mut self, val: u64) {
         match self {
             Type::Char      { align, .. }   |
+            Type::Short     { align, .. }   |
             Type::Int       { align, .. }   |
             Type::Long      { align, .. }   |
             Type::Ptr       { align, .. }   |
@@ -138,6 +156,7 @@ impl Type {
     pub fn get_align(&self) -> u64 {
         match self {
             Type::Char      { align, .. }   |
+            Type::Short     { align, .. }   |
             Type::Int       { align, .. }   |
             Type::Long      { align, .. }   |
             Type::Ptr       { align, .. }   |
