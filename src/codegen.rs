@@ -43,8 +43,11 @@ impl CodeGenerator {
     
     // Load a value from where %rax is pointing to.
     fn load(&mut self, ty: &Type) {
-        if let Type::Array { .. } = ty {
-            return;
+        match ty {
+            Type::Array     { .. }  |
+            Type::Struct    { .. }  |
+            Type::Union     { .. }  => return,
+            _   =>  (),
         }
 
         if ty.get_size() == 1 {
@@ -56,6 +59,18 @@ impl CodeGenerator {
 
     fn store(&mut self, ty: &Type) {
         self.pop("%rdi");
+
+        match ty {
+            Type::Struct    { .. }  |
+            Type::Union     { .. }  => {
+                for i in 0..ty.get_size() {
+                    writeln!(self.output, "  mov {}(%rax), %r8b", i).unwrap();
+                    writeln!(self.output, "  mov %r8b, {}(%rdi)", i).unwrap();
+                }
+                return;
+            },
+            _   =>  (),
+        }
 
         if ty.get_size() == 1 {
             writeln!(self.output, "  mov %al, (%rdi)").unwrap();
