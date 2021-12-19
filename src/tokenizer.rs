@@ -82,7 +82,7 @@ impl Token {
         self.literal == op
     }
 
-    pub fn error(&self, s: &str) {
+    pub fn error(&self, s: &str) -> ! {
         eprintln!("{}", self.line);
         eprint!("{:indent$}^ ", "", indent=self.indent);
         eprintln!("{}", s);
@@ -461,7 +461,7 @@ impl Tokenizer {
         loc-line
     }
 
-    fn error_at(&self, loc: usize, s: &str) {
+    fn error_at(&self, loc: usize, s: &str) -> ! {
         let mut line = 0;
 
         for (i, ch) in self.input.chars().rev().skip(self.input.len()-loc).enumerate() {
@@ -486,7 +486,7 @@ impl Tokenizer {
         process::exit(1);
     }
 
-    pub fn error_tok(&self, token: &Token, s: &str) {
+    pub fn error_tok(&self, token: &Token, s: &str) -> ! {
         self.error_at(token.loc, s);
     }
 }

@@ -115,7 +115,6 @@ impl Node {
                     Type::Array { base, .. }    =>  *base,
                     _   =>  {
                         self.get_token().error("invalid pointer dereference");
-                        panic!();
                     },
                 }
             },
@@ -127,14 +126,12 @@ impl Node {
                     }
                 }
                 self.get_token().error("statement expression returning void is not supported");
-                panic!();
             },
             Node::Var { ty, .. }        =>  ty.clone(),
             Node::FuncCall { .. }       |
             Node::Num (..)              =>  ty_long(None),
             _   =>  {
                 self.get_token().error("not an expression");
-                panic!();
             },
         }
     }
@@ -427,7 +424,6 @@ impl Parser {
         }
 
         self.tokenizer.cur_token().error("typename expected");
-        panic!();
     }
 
     // func-params = (param ("," param)*)? ")"
@@ -474,7 +470,6 @@ impl Parser {
                 val
             } else {
                 token.error("expected a number");
-                panic!();
             };
             let token = self.tokenizer.cur_token();
             if !token.equal("]") {
@@ -915,7 +910,6 @@ impl Parser {
             };
         }
         token.error("invalid operands");
-        panic!();
     }
 
     // add = mul ("+" mul | "-" mul)*
@@ -1014,7 +1008,6 @@ impl Parser {
                 obj
             } else {
                 token.error("undefined variable");
-                panic!();
             };
 
             return Node::Var{
@@ -1047,7 +1040,6 @@ impl Parser {
         }
 
         token.error("expected an expression");
-        panic!();
     }
 
     // mul = unary ("*" unary | "/" unary)*
@@ -1251,11 +1243,9 @@ impl Parser {
                     }
                 }
                 token.error("no such member");
-                panic!();
             },
             _   => {
                 token.error("no such member");
-                panic!();
             },
         }
     }
