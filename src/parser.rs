@@ -66,7 +66,7 @@ pub enum Node {
         text: Vec<Box<Node>>,
         token:  Token,
     },
-    Num         ( u32, Token ),                                     // Integer
+    Num         ( u64, Token ),                                     // Integer
 }
 
 impl Node {
@@ -87,7 +87,7 @@ impl Node {
             Node::Eq { .. }         |
             Node::Ne { .. }         |
             Node::Lt { .. }         |
-            Node::Le { .. }         =>   ty_int(None),
+            Node::Le { .. }         =>   ty_long(None),
             Node::Assign { lhs, .. }    =>  {
                 let ty = lhs.get_type();
                 if let Type::Array { .. } = ty {
@@ -131,7 +131,7 @@ impl Node {
             },
             Node::Var { ty, .. }        =>  ty.clone(),
             Node::FuncCall { .. }       |
-            Node::Num (..)              =>  ty_int(None),
+            Node::Num (..)              =>  ty_long(None),
             _   =>  {
                 self.get_token().error("not an expression");
                 panic!();
@@ -172,7 +172,7 @@ impl Node {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Obj {
-    pub offset:     u32,
+    pub offset:     u64,
     pub ty:         Type,
     pub is_local:   bool,
     pub init_data:  Option<Vec<char>> // Global variable
@@ -182,10 +182,10 @@ pub struct Obj {
 pub struct Env {
     pub parent:     Option<Rc<RefCell<Env>>>,
     pub objs:       Vec<Rc<RefCell<Obj>>>,   // variables
-    pub stack_size: u32,
+    pub stack_size: u64,
 }
 
-fn align_to(n: u32, align: u32) -> u32 {
+fn align_to(n: u64, align: u64) -> u64 {
     (n + align - 1) / align * align
 }
 
@@ -289,7 +289,7 @@ impl Scope {
 #[derive(Debug)]
 pub struct Parser {
     tokenizer:      Tokenizer,
-    id:             u32,
+    id:             u64,
     global:         Rc<RefCell<Env>>,
     pub local:      Rc<RefCell<Env>>,
     scope:          Rc<RefCell<Scope>>,
@@ -400,7 +400,7 @@ impl Parser {
         token.literal.to_string()
     }
 
-    // declspec = "char" | "int" | struct-decl
+    // declspec = "char" | "shoht" | "int" | "long" | struct-decl | union-decl
     fn declspec(&mut self) -> Type {
         if self.tokenizer.consume("char") {
             return ty_char(None);
@@ -408,6 +408,10 @@ impl Parser {
 
         if self.tokenizer.consume("int") {
             return ty_int(None);
+        }
+
+        if self.tokenizer.consume("long") {
+            return ty_long(None);
         }
 
         if self.tokenizer.consume("struct") {
@@ -558,8 +562,8 @@ impl Parser {
     }
 
     fn is_typename(&self, token: &Token) -> bool {
-       token.equal("char") || token.equal("int") || token.equal("struct") ||
-       token.equal("union")
+       token.equal("char") || token.equal("short") || token.equal("int") ||
+       token.equal("long") || token.equal("struct") || token.equal("union")
     }
 
     // stmt = "return" expr ";"
@@ -1398,7 +1402,7 @@ impl Parser {
         Type::Function {
             name:   None,
             params: None,
-            ret_ty: Box::new(ty_int(None)),
+            ret_ty: Box::new(ty_long(None)),
             align:  1,
         }
     }

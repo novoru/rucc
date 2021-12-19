@@ -18,7 +18,7 @@ static ARGREG64: &'static [&str] = &[
 
 pub struct CodeGenerator {
     cur_func:   Option<Rc<Node>>,
-    count:      u32,
+    count:      u64,
     output:     Box<dyn Write>,
 }
 
@@ -32,7 +32,7 @@ impl CodeGenerator {
         }
     }
 
-    fn count(&mut self) -> u32 {
+    fn count(&mut self) -> u64 {
         let c = self.count;
         self.count += 1;
         c
@@ -288,7 +288,7 @@ impl CodeGenerator {
         }
     }
 
-    fn store_gp(&mut self, r: usize, offset: i32, sz: u32) {
+    fn store_gp(&mut self, r: usize, offset: i32, sz: u64) {
         match sz {
             1   =>  writeln!(self.output, "  mov {}, {}(%rbp)", ARGREG8[r], -offset).unwrap(),
             4   =>  writeln!(self.output, "  mov {}, {}(%rbp)", ARGREG32[r], -offset).unwrap(), 
@@ -339,7 +339,7 @@ impl CodeGenerator {
 
             if let Some(init_data) = &var.borrow().init_data {
                 for ch in init_data {
-                    writeln!(self.output, "  .byte {}", *ch as u32).unwrap();
+                    writeln!(self.output, "  .byte {}", *ch as u64).unwrap();
                 }
             } else {
                 writeln!(self.output, "  .zero {}", var.borrow().ty.get_size()).unwrap();

@@ -2,18 +2,19 @@
 pub struct Member {
     pub ty:     Type,
     pub name:   String,
-    pub offset: u32,
+    pub offset: u64,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Type {
-    Char        { name: Option<String>, size: u32, align: u32 },
-    Int         { name: Option<String>, size: u32, align: u32 },
-    Ptr         { name: Option<String>, base: Box<Type>, size: u32, align: u32 },
-    Function    { name: Option<String>, params: Option<Vec<Type>> ,ret_ty: Box<Type>, align: u32 },
-    Array       { name: Option<String>, base: Box<Type>, size: u32, len: u32, align: u32 },
-    Struct      { name: Option<String>, members: Vec<Box<Member>>, size: u32, align: u32 },
-    Union       { name: Option<String>, members: Vec<Box<Member>>, size: u32, align: u32 },
+    Char        { name: Option<String>, size: u64, align: u64 },
+    Int         { name: Option<String>, size: u64, align: u64 },
+    Long        { name: Option<String>, size: u64, align: u64 },
+    Ptr         { name: Option<String>, base: Box<Type>, size: u64, align: u64 },
+    Function    { name: Option<String>, params: Option<Vec<Type>> ,ret_ty: Box<Type>, align: u64 },
+    Array       { name: Option<String>, base: Box<Type>, size: u64, len: u64, align: u64 },
+    Struct      { name: Option<String>, members: Vec<Box<Member>>, size: u64, align: u64 },
+    Union       { name: Option<String>, members: Vec<Box<Member>>, size: u64, align: u64 },
 }
 
 pub fn ty_char(name: Option<String>) -> Type {
@@ -24,9 +25,13 @@ pub fn ty_int(name: Option<String>) -> Type {
     Type::Int { name: name, size: 4, align: 4 }
 }
 
+pub fn ty_long(name: Option<String>) -> Type {
+    Type::Int { name: name, size: 8, align: 8 }
+}
+
 impl Type {
     pub fn is_num(&self) -> bool {
-        self.is_char() || self.is_integer()
+        self.is_char() || self.is_integer() || self.is_long()
     }
 
     pub fn is_char(&self) -> bool {
@@ -43,6 +48,13 @@ impl Type {
         }
     }
 
+    pub fn is_long(&self) -> bool {
+        match self {
+            Type::Long {..} =>  true,
+            _               =>  false,
+        }
+    }
+
     pub fn is_ptr(&self) -> bool {
         match self {
             Type::Ptr   {..}    |
@@ -51,10 +63,11 @@ impl Type {
         }
     }
 
-    pub fn set_size(&mut self, sz: u32) {
+    pub fn set_size(&mut self, sz: u64) {
         match self {
             Type::Char      { size, .. }    |
             Type::Int       { size, .. }    |
+            Type::Long      { size, .. }    |
             Type::Ptr       { size, .. }    |
             Type::Array     { size, .. }    |
             Type::Struct    { size, .. }    |
@@ -63,7 +76,7 @@ impl Type {
         }
     }
 
-    pub fn get_size(&self) -> u32 {
+    pub fn get_size(&self) -> u64 {
         match self {
             Type::Char      { size, .. }    |
             Type::Int       { size, .. }    |
@@ -79,6 +92,7 @@ impl Type {
         match self {
             Type::Char      { name, .. }    |
             Type::Int       { name, .. }    |
+            Type::Long      { name, .. }    |
             Type::Ptr       { name, .. }    |
             Type::Function  { name, .. }    |
             Type::Array     { name, .. }    |
@@ -91,6 +105,7 @@ impl Type {
         match self {
             Type::Char      { name, .. }    |
             Type::Int       { name, .. }    |
+            Type::Long      { name, .. }    |
             Type::Ptr       { name, .. }    |
             Type::Function  { name, .. }    |
             Type::Array     { name, .. }    |
@@ -107,10 +122,11 @@ impl Type {
         }
     }
 
-    pub fn set_align(&mut self, val: u32) {
+    pub fn set_align(&mut self, val: u64) {
         match self {
             Type::Char      { align, .. }   |
             Type::Int       { align, .. }   |
+            Type::Long      { align, .. }   |
             Type::Ptr       { align, .. }   |
             Type::Function  { align, .. }   |
             Type::Array     { align, .. }   |
@@ -119,10 +135,11 @@ impl Type {
         }
     }
 
-    pub fn get_align(&self) -> u32 {
+    pub fn get_align(&self) -> u64 {
         match self {
             Type::Char      { align, .. }   |
             Type::Int       { align, .. }   |
+            Type::Long      { align, .. }   |
             Type::Ptr       { align, .. }   |
             Type::Function  { align, .. }   |
             Type::Array     { align, .. }   |

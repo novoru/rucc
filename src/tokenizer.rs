@@ -2,7 +2,8 @@ use std::process;
 use crate::ty::*;
 
 static KWDS: &'static [&str] = &[
-    "return", "if", "for", "while", "int", "sizeof", "char", "struct", "union",
+    "return", "if", "for", "while", "int", "sizeof", "char",
+    "struct", "union", "short", "long",
 ];
 
 static KW: &'static [&str] = &[
@@ -23,7 +24,7 @@ pub enum TokenKind {
 pub struct Token {
     pub kind:       TokenKind,
     loc:            usize,
-    pub val:        Option<u32>,
+    pub val:        Option<u64>,
     pub literal:    String,
     pub ty:         Option<Type>,   // Used if TokenKind::Str
     line:           String,
@@ -45,7 +46,7 @@ impl Token {
         }
     }
 
-    pub fn new_num(val: u32, loc: usize, s: &str, line: String, lineno: usize, indent: usize) -> Self {
+    pub fn new_num(val: u64, loc: usize, s: &str, line: String, lineno: usize, indent: usize) -> Self {
         Token {
             kind:       TokenKind::Num,
             loc:        loc,
@@ -58,7 +59,7 @@ impl Token {
         }
     }
 
-    pub fn new_str(loc: usize, s: &str, len: u32, line: String, lineno: usize, indent: usize) -> Self {
+    pub fn new_str(loc: usize, s: &str, len: u64, line: String, lineno: usize, indent: usize) -> Self {
         Token {
             kind:       TokenKind::Str,
             loc:        loc,
@@ -263,7 +264,7 @@ impl Tokenizer {
         }
         let literal = &self.input[start..self.pos];
         self.tokens.push(Token::new_num(
-            literal.parse::<u32>().unwrap(),
+            literal.parse::<u64>().unwrap(),
             start,
             literal,
             self.get_line(start),
@@ -372,7 +373,7 @@ impl Tokenizer {
         self.tokens.push(Token::new_str(
             start,
             &s,
-            s.chars().count() as u32,
+            s.chars().count() as u64,
             self.get_line(start),
             self.get_lineno(start),
             self.get_indent(start),
