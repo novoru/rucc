@@ -1,3 +1,6 @@
+use std::rc::Rc;
+use crate::tokenizer::Token;
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct Member {
     pub ty:     Type,
@@ -6,164 +9,176 @@ pub struct Member {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum Type {
-    Char        { name: Option<String>, size: u64, align: u64 },
-    Short       { name: Option<String>, size: u64, align: u64 },
-    Int         { name: Option<String>, size: u64, align: u64 },
-    Long        { name: Option<String>, size: u64, align: u64 },
-    Ptr         { name: Option<String>, base: Box<Type>, size: u64, align: u64 },
-    Function    { name: Option<String>, params: Option<Vec<Type>> ,ret_ty: Box<Type>, align: u64 },
-    Array       { name: Option<String>, base: Box<Type>, size: u64, len: u64, align: u64 },
-    Struct      { name: Option<String>, members: Vec<Box<Member>>, size: u64, align: u64 },
-    Union       { name: Option<String>, members: Vec<Box<Member>>, size: u64, align: u64 },
+pub enum TypeKind {
+    Char,
+    Short,
+    Int,
+    Long,
+    Ptr,
+    Function,
+    Array,
+    Struct,
+    Union,
 }
 
-pub fn ty_char(name: Option<String>) -> Type {
-    Type::Char  { name: name, size: 1, align: 1 }
+#[derive(Debug, Clone, PartialEq)]
+pub struct Type {
+    pub kind:   TypeKind,
+    pub name:   Option<Rc<Token>>,
+    pub size:   u64,
+    pub align:  u64,
+
+    // Ptr or Array
+    pub base:   Option<Box<Type>>,
+
+    // Array
+    pub len:    u64,
+    
+    // Function
+    pub params: Vec<Type>,
+    pub ret_ty: Option<Box<Type>>,
+
+    // Struct or Union
+    pub members:    Vec<Box<Member>>,
 }
 
-pub fn ty_short(name: Option<String>) -> Type {
-    Type::Short { name: name, size: 2, align: 2 }
+pub fn new_char(name: Option<Rc<Token>>) -> Type {
+    Type {
+        kind:       TypeKind::Char,
+        name,
+        size:       1,
+        align:      1,
+        base:       None,
+        len:        0,
+        params:     Vec::new(),
+        ret_ty:     None,
+        members:    Vec::new(),
+    }
 }
 
-pub fn ty_int(name: Option<String>) -> Type {
-    Type::Int   { name: name, size: 4, align: 4 }
+pub fn new_short(name: Option<Rc<Token>>) -> Type {
+    Type {
+        kind:       TypeKind::Short,
+        name,
+        size:       2,
+        align:      2,
+        base:       None,
+        len:        0,
+        params:     Vec::new(),
+        ret_ty:     None,
+        members:    Vec::new(),
+    }
 }
 
-pub fn ty_long(name: Option<String>) -> Type {
-    Type::Long  { name: name, size: 8, align: 8 }
+pub fn new_int(name: Option<Rc<Token>>) -> Type {
+    Type {
+        kind:       TypeKind::Int,
+        name,
+        size:       4,
+        align:      4,
+        base:       None,
+        len:        0,
+        params:     Vec::new(),
+        ret_ty:     None,
+        members:    Vec::new(),
+    }
+}
+
+pub fn new_long(name: Option<Rc<Token>>) -> Type {
+    Type {
+        kind:       TypeKind::Long,
+        name,
+        size:       8,
+        align:      8,
+        base:       None,
+        len:        0,
+        params:     Vec::new(),
+        ret_ty:     None,
+        members:    Vec::new(),
+    }
+}
+
+pub fn new_ptr(name: Option<Rc<Token>>, base: Option<Box<Type>>) -> Type {
+    Type {
+        kind:       TypeKind::Ptr,
+        name,
+        size:       8,
+        align:      8,
+        base:       base,
+        len:        0,
+        params:     Vec::new(),
+        ret_ty:     None,
+        members:    Vec::new(),
+    }
+}
+
+pub fn new_function(name: Option<Rc<Token>>, params: Vec<Type>, ret_ty: Option<Box<Type>>) -> Type {
+    Type {
+        kind:       TypeKind::Function,
+        name,
+        size:       0,
+        align:      1,
+        base:       None,
+        len:        0,
+        params,
+        ret_ty,
+        members:    Vec::new(),
+    }
+}
+
+pub fn new_array(name: Option<Rc<Token>>, base: Option<Box<Type>>, size: u64, len: u64, align: u64) -> Type {
+    Type {
+        kind:       TypeKind::Array,
+        name,
+        size:       size,
+        align:      align,
+        base:       base,
+        len:        len,
+        params:     Vec::new(),
+        ret_ty:     None,
+        members:    Vec::new(),
+    }
+}
+
+pub fn new_struct(name: Option<Rc<Token>>, members: Vec<Box<Member>>) -> Type {
+    Type {
+        kind:       TypeKind::Struct,
+        name,
+        size:       0,
+        align:      1,
+        base:       None,
+        len:        0,
+        params:     Vec::new(),
+        ret_ty:     None,
+        members,
+    }
+}
+
+pub fn new_union(name: Option<Rc<Token>>, members: Vec<Box<Member>>) -> Type {
+    Type {
+        kind:       TypeKind::Union,
+        name,
+        size:       0,
+        align:      1,
+        base:       None,
+        len:        0,
+        params:     Vec::new(),
+        ret_ty:     None,
+        members,
+    }
 }
 
 impl Type {
     pub fn is_num(&self) -> bool {
-        self.is_char() || self.is_short() || self.is_integer() || self.is_long()
-    }
-
-    pub fn is_char(&self) -> bool {
-        match self {
-            Type::Char {..} =>  true,
-            _               =>  false,
-        }
-    }
-
-    pub fn is_short(&self) -> bool {
-        match self {
-            Type::Short {..}    =>  true,
-            _                   =>  false,
-        }
-    }
-
-    pub fn is_integer(&self) -> bool {
-        match self {
-            Type::Int {..}  =>  true,
-            _               =>  false,
-        }
-    }
-
-    pub fn is_long(&self) -> bool {
-        match self {
-            Type::Long {..} =>  true,
-            _               =>  false,
-        }
+        matches!(self.kind,
+            TypeKind::Char | TypeKind::Short |
+            TypeKind::Int  | TypeKind::Long
+        )
     }
 
     pub fn is_ptr(&self) -> bool {
-        match self {
-            Type::Ptr   {..}    |
-            Type::Array {..}    =>  true,
-            _                   =>  false,
-        }
-    }
-
-    pub fn set_size(&mut self, sz: u64) {
-        match self {
-            Type::Char      { size, .. }    |
-            Type::Short     { size, .. }    |
-            Type::Int       { size, .. }    |
-            Type::Long      { size, .. }    |
-            Type::Ptr       { size, .. }    |
-            Type::Array     { size, .. }    |
-            Type::Struct    { size, .. }    |
-            Type::Union     { size, .. }    => *size = sz,
-            _   => panic!("dont have the size field: {:?}", self),
-        }
-    }
-
-    pub fn get_size(&self) -> u64 {
-        match self {
-            Type::Char      { size, .. }    |
-            Type::Short     { size, .. }    |
-            Type::Int       { size, .. }    |
-            Type::Long      { size, .. }    |
-            Type::Ptr       { size, .. }    |
-            Type::Array     { size, .. }    |
-            Type::Struct    { size, .. }    |
-            Type::Union     { size, .. }    => *size,
-            _   => panic!("dont have the size field: {:?}", self),
-        }
-    }
-
-    pub fn get_name(&self) -> Option<String> {
-        match self {
-            Type::Char      { name, .. }    |
-            Type::Short     { name, .. }    |
-            Type::Int       { name, .. }    |
-            Type::Long      { name, .. }    |
-            Type::Ptr       { name, .. }    |
-            Type::Function  { name, .. }    |
-            Type::Array     { name, .. }    |
-            Type::Struct    { name, .. }    |
-            Type::Union     { name, .. }    =>  name.clone(),
-        }
-    }
-
-    pub fn set_name(&mut self, s: String) {
-        match self {
-            Type::Char      { name, .. }    |
-            Type::Short     { name, .. }    |
-            Type::Int       { name, .. }    |
-            Type::Long      { name, .. }    |
-            Type::Ptr       { name, .. }    |
-            Type::Function  { name, .. }    |
-            Type::Array     { name, .. }    |
-            Type::Struct    { name, .. }    |
-            Type::Union     { name, .. }   =>  *name = Some(s),
-        }
-    }
-
-    pub fn get_base(&mut self) -> Type {
-        match self {
-            Type::Ptr   { base, .. }    |
-            Type::Array { base, .. }    =>  *base.clone(),
-            _   => panic!("dont have the base field: {:?}", self),
-        }
-    }
-
-    pub fn set_align(&mut self, val: u64) {
-        match self {
-            Type::Char      { align, .. }   |
-            Type::Short     { align, .. }   |
-            Type::Int       { align, .. }   |
-            Type::Long      { align, .. }   |
-            Type::Ptr       { align, .. }   |
-            Type::Function  { align, .. }   |
-            Type::Array     { align, .. }   |
-            Type::Struct    { align, .. }   |
-            Type::Union     { align, .. }   =>  *align = val,
-        }
-    }
-
-    pub fn get_align(&self) -> u64 {
-        match self {
-            Type::Char      { align, .. }   |
-            Type::Short     { align, .. }   |
-            Type::Int       { align, .. }   |
-            Type::Long      { align, .. }   |
-            Type::Ptr       { align, .. }   |
-            Type::Function  { align, .. }   |
-            Type::Array     { align, .. }   |
-            Type::Struct    { align, .. }   |
-            Type::Union     { align, .. }   =>  *align,
-        }
+        matches!(self.kind,
+            TypeKind::Array | TypeKind::Ptr
+        )
     }
 }

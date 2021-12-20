@@ -1,4 +1,5 @@
 use std::process;
+use std::rc::Rc;
 use crate::ty::*;
 
 static KWDS: &'static [&str] = &[
@@ -26,7 +27,7 @@ pub struct Token {
     loc:            usize,
     pub val:        Option<u64>,
     pub literal:    String,
-    pub ty:         Option<Type>,   // Used if TokenKind::Str
+    pub ty:         Option<Box<Type>>,   // Used if TokenKind::Str
     line:           String,
     lineno:         usize,
     indent:         usize,
@@ -60,22 +61,27 @@ impl Token {
     }
 
     pub fn new_str(loc: usize, s: &str, len: u64, line: String, lineno: usize, indent: usize) -> Self {
-        Token {
+        let mut token = Token {
             kind:       TokenKind::Str,
             loc:        loc,
             val:        None,
             literal:    s.to_string(),
-            ty:         Some(Type::Array {
-                name:   None,
-                base:   Box::new(ty_char(None)),
-                size:   len,
-                len:    len,
-                align:  8,
-            }),
+            ty:         None,
             line:       line,
             lineno:     lineno,
             indent:     indent,
-        }
+        };
+        
+        let ty = Some(Box::new(new_array (
+            Some(Rc::new(token.clone())),
+            Some(Box::new(new_char(None))),
+            len,
+            len,
+            8,
+        )));
+
+        token.ty = ty;
+        token
     }
 
     pub fn equal(&self, op: &str) -> bool {

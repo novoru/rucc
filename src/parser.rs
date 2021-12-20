@@ -76,7 +76,7 @@ impl Node {
             Node::Sub { lhs, rhs, .. }  =>  {
                 // ptr - ptr, which returns how many elements are between the two.
                 if lhs.get_type().is_ptr() && rhs.get_type().is_ptr() {
-                    ty_int(None)
+                    new_int(None)
                 } else {
                     lhs.get_type()
                 }
@@ -87,10 +87,10 @@ impl Node {
             Node::Eq { .. }         |
             Node::Ne { .. }         |
             Node::Lt { .. }         |
-            Node::Le { .. }         =>   ty_long(None),
+            Node::Le { .. }         =>   new_long(None),
             Node::Assign { lhs, .. }    =>  {
                 let ty = lhs.get_type();
-                if let Type::Array { .. } = ty {
+                if ty.kind == TypeKind::Array {
                     self.get_token().error("not an lvalue");
                 }
 
@@ -100,19 +100,19 @@ impl Node {
             Node::Member { member, ..}    =>  member.ty.clone(),
             Node::Addr (expr, ..)       =>  {
                 let ty = expr.get_type();
-                match ty {
-                    Type::Array { base, .. }    =>  {
-                        Type::Ptr { name: None, base: Box::new(*base.clone()), size: 8, align: 8 }
+                match ty.kind {
+                    TypeKind::Array =>  {
+                        new_ptr(None, Some(Box::new(*ty.base.unwrap().clone())))
                     },
-                    _   =>  Type::Ptr { name: None, base: Box::new(ty.clone()), size: 8, align: 8 },
+                    _   =>  new_ptr(None, Some(Box::new(ty.clone()))),
                 }
                 
             },
             Node::Deref (expr, ..)  =>  {
                 let ty = expr.get_type();
-                match ty {
-                    Type::Ptr   { base, .. }    |
-                    Type::Array { base, .. }    =>  *base,
+                match ty.kind {
+                    TypeKind::Ptr       |
+                    TypeKind::Array     =>  *ty.base.unwrap(),
                     _   =>  {
                         self.get_token().error("invalid pointer dereference");
                     },
@@ -129,7 +129,7 @@ impl Node {
             },
             Node::Var { ty, .. }        =>  ty.clone(),
             Node::FuncCall { .. }       |
-            Node::Num (..)              =>  ty_long(None),
+            Node::Num (..)              =>  new_long(None),
             _   =>  {
                 self.get_token().error("not an expression");
             },
@@ -189,18 +189,18 @@ fn align_to(n: u64, align: u64) -> u64 {
 impl Env {
 
     pub fn add_var(&mut self, ty: &Type, init_data: Option<Vec<char>>, token: &Token, is_local: bool, scope: &Scope) -> Rc<RefCell<Obj>> {
-        if scope.find_svar(&ty.get_name().unwrap()) != None {
-            token.error(&format!("redefinition of '{}'", &ty.get_name().unwrap()));
+        if scope.find_svar(&ty.name.as_ref().unwrap().literal) != None {
+            token.error(&format!("redefinition of '{}'", &ty.name.as_ref().unwrap().literal));
         }
 
-        let mut offset = ty.get_size();
+        let mut offset = ty.size;
         for obj in &mut self.objs {
-            obj.borrow_mut().offset += ty.get_size();
-            offset += obj.borrow().ty.get_size();
+            obj.borrow_mut().offset += ty.size;
+            offset += obj.borrow().ty.size;
         }
         
         let obj = Rc::new(RefCell::new( Obj {
-            offset: ty.get_size(),
+            offset: ty.size,
             ty:     ty.clone(),
             init_data, is_local
         }));
@@ -213,7 +213,7 @@ impl Env {
     // find variable from local and global
     pub fn find_var(&self, name: &str) -> Option<Rc<RefCell<Obj>>> {
         for obj in self.objs.iter().rev() {
-            if obj.borrow().ty.get_name().unwrap() == name {
+            if obj.borrow().ty.name.as_ref().unwrap().literal == name {
                 return Some(Rc::clone(obj))
             }
         }
@@ -228,7 +228,7 @@ impl Env {
     // find variable from local
     pub fn find_lvar(&self, name: &str) -> Option<Rc<RefCell<Obj>>> {
         for obj in &self.objs {
-            if obj.borrow().ty.get_name().unwrap() == name {
+            if obj.borrow().ty.name.as_ref().unwrap().literal == name {
                 return Some(Rc::clone(obj))
             }
         }
@@ -251,7 +251,7 @@ pub struct Scope {
 impl Scope {
     pub fn find_lvar(&self, name: &str) -> Option<Rc<RefCell<Obj>>> {
         for obj in &self.objs {
-            if obj.borrow().ty.get_name().unwrap() == name {
+            if obj.borrow().ty.name.as_ref().unwrap().literal == name {
                 return Some(Rc::clone(obj));
             }
         }
@@ -266,7 +266,7 @@ impl Scope {
     // find variable from scope
     pub fn find_svar(&self, name: &str) -> Option<Rc<RefCell<Obj>>> {
         for obj in &self.objs {
-            if obj.borrow().ty.get_name().unwrap() == name {
+            if obj.borrow().ty.name.as_ref().unwrap().literal == name {
                 return Some(Rc::clone(obj));
             }
         }
@@ -372,7 +372,14 @@ impl Parser {
 
     fn new_anon_gvar(&mut self, token: Token, ty: Type) -> Rc<RefCell<Obj>> {
         let mut ty = ty.clone();
-        ty.set_name(self.new_unique_name());
+        ty.name = Some(Rc::new(Token::new(
+            TokenKind::Ident,
+            0,
+            &self.new_unique_name(),
+            "".to_string(),
+            0,
+            0,
+        )));
         let obj = self.global.borrow_mut().add_var(
             &ty,
             Some(token.literal.chars().collect()),
@@ -400,19 +407,19 @@ impl Parser {
     // declspec = "char" | "shoht" | "int" | "long" | struct-decl | union-decl
     fn declspec(&mut self) -> Type {
         if self.tokenizer.consume("char") {
-            return ty_char(None);
+            return new_char(None);
         }
 
         if self.tokenizer.consume("short") {
-            return ty_short(None);
+            return new_short(None);
         }
 
         if self.tokenizer.consume("int") {
-            return ty_int(None);
+            return new_int(None);
         }
 
         if self.tokenizer.consume("long") {
-            return ty_long(None);
+            return new_long(None);
         }
 
         if self.tokenizer.consume("struct") {
@@ -444,12 +451,11 @@ impl Parser {
         }
         self.new_param_lvars(&params);
 
-        Type::Function {
-            name:   ty.get_name(),
-            params: Some(params.into_iter().map(|elm| elm.0).collect::<Vec<Type>>()),
-            ret_ty: Box::new(ty),
-            align:  1,
-        }
+        new_function (
+            Some(Rc::clone(&ty.name.as_ref().unwrap())),
+            params.into_iter().map(|elm| elm.0).collect::<Vec<Type>>(),
+            Some(Box::new(ty)),
+        )
     }
 
     // type-suffix = "(" func-pramas
@@ -477,13 +483,13 @@ impl Parser {
             }
             ty = self.type_suffix(ty.clone());
 
-            return Type::Array {
-                name:   ty.get_name(),
-                base:   Box::new(ty.clone()),
-                size:   ty.clone().get_size()*sz,
-                len:    sz,
-                align:  ty.get_align(),
-            };
+            return new_array (
+                ty.clone().name,
+                Some(Box::new(ty.clone())),
+                ty.clone().size*sz,
+                sz,
+                ty.align,
+            );
         }
         self.tokenizer.next_token();
 
@@ -494,12 +500,10 @@ impl Parser {
     fn declarator(&mut self, ty: Type) -> Type {
         let mut ty = ty.clone();
         while self.tokenizer.consume("*") {
-            ty = Type::Ptr {
-                name:   None,
-                base:   Box::new(ty.clone()),
-                size:   8,
-                align:  8,
-            };
+            ty = new_ptr (
+                None,
+                Some(Box::new(ty.clone())),
+            );
         }
 
         if self.tokenizer.consume("(") {
@@ -520,7 +524,7 @@ impl Parser {
         if token.kind != TokenKind::Ident {
             token.error("expected a variable name");
         }
-        ty.set_name(token.literal.to_string());
+        ty.name = Some(Rc::new(token));
         ty = self.type_suffix(ty);
 
         ty
@@ -542,7 +546,7 @@ impl Parser {
 
             let tok_lhs = self.tokenizer.cur_token().clone();
             let ty = self.declarator(basety.clone());
-            let name = ty.get_name().unwrap();
+            let name = ty.name.as_ref().unwrap().literal.clone();
             let obj = Rc::clone(&self.new_lvar(&ty, &tok_lhs));
 
             if !self.tokenizer.consume("=") {
@@ -850,11 +854,11 @@ impl Parser {
             lhs = rhs;
             rhs = tmp;
         }
-
+        
         rhs = Node::Mul {
             lhs: Box::new(rhs.clone()),
             rhs: Box::new(Node::Num(
-                lhs.get_type().get_base().get_size(),
+                lhs.get_type().base.unwrap().size,
                 rhs.clone().get_token().clone(),
             )),
             token: rhs.get_token().clone(),
@@ -881,7 +885,7 @@ impl Parser {
             rhs = Node::Mul {
                 lhs: Box::new(rhs.clone()),
                 rhs: Box::new(Node::Num(
-                    lhs.get_type().get_base().get_size(),
+                    lhs.get_type().base.unwrap().size,
                     rhs.clone().get_token().clone(),
                 )),
                 token: rhs.get_token().clone(),
@@ -903,7 +907,7 @@ impl Parser {
             return Node::Div {
                 lhs: Box::new(lhs.clone()),
                 rhs: Box::new(Node::Num(
-                    lhs.get_type().get_size(),
+                    lhs.get_type().size,
                     self.tokenizer.cur_token().clone(),
                 )),
                 token,
@@ -989,7 +993,7 @@ impl Parser {
         if self.tokenizer.consume("sizeof") {
             let node = self.unary();
             return Node::Num(
-                node.get_type().get_size(),
+                node.get_type().size,
                 token,
             );
         }
@@ -1019,12 +1023,12 @@ impl Parser {
         }
 
         if token.kind == TokenKind::Str {
-            let var = self.new_string_literal(token.clone(), token.ty.clone().unwrap());
+            let var = self.new_string_literal(token.clone(), *token.ty.clone().unwrap());
             self.tokenizer.next_token();
             let ty = token.clone().ty.unwrap();
             return Node::Var {
-                name:   var.clone().borrow().ty.get_name().unwrap(),
-                ty:     ty,
+                name:   var.borrow().ty.name.as_ref().unwrap().literal.clone(),
+                ty:     *ty,
                 token,
                 obj:    Rc::clone(&var),
             };
@@ -1117,7 +1121,7 @@ impl Parser {
                 let ty = self.declarator(basety.clone());
                 members.push(Box::new(Member {
                     ty:     ty.clone(),
-                    name:   ty.get_name().unwrap(),
+                    name:   ty.name.as_ref().unwrap().literal.clone(),
                     offset: 0,
                 }));
                 i += 1;
@@ -1152,27 +1156,23 @@ impl Parser {
         self.tokenizer.next_token();
 
         // Construct a struct object.
-        let mut ty = Type::Struct {
-            name:       None,
-            members:    self.struct_members(),
-            size:       0,
-            align:      1,
-        };
+        let mut ty = new_struct (
+            None,
+            self.struct_members(),
+        );
 
         // Assign offsets within the struct to member.
         let mut offset = 0;
-        if let Type::Struct { ref mut members, ref mut size, ref mut align, .. } = ty {
-            for member in members {
-                offset = align_to(offset, member.ty.get_align());
-                member.offset = offset;
-                offset += member.ty.get_size();
+        for member in ty.members.iter_mut() {
+            offset = align_to(offset, member.ty.align);
+            member.offset = offset;
+            offset += member.ty.size;
 
-                if *align < member.ty.get_align() {
-                    *align = member.ty.get_align();
-                }
+            if ty.align < member.ty.align {
+                ty.align = member.ty.align;
             }
-            *size = align_to(offset, *align);
         }
+        ty.size = align_to(offset, ty.align);
 
         if tag != None {
             self.push_tag_scope(&tag.unwrap().literal, ty.clone());
@@ -1204,25 +1204,21 @@ impl Parser {
         self.tokenizer.next_token();
 
         // Construct a union object.
-        let mut ty = Type::Union {
-            name:       None,
-            members:    self.struct_members(),
-            size:       0,
-            align:      1,
-        };
+        let mut ty = new_union(
+            None,
+            self.struct_members(),
+        );
 
         // Assign offsets within the struct to member.
-        if let Type::Union { ref mut members, ref mut size, ref mut align, .. } = ty {
-            for member in members {
-                if *align < member.ty.get_align() {
-                    *align = member.ty.get_align();
-                }
-                if *size < member.ty.get_size() {
-                    *size = member.ty.get_size();
-                }
+        for member in ty.members.iter_mut() {
+            if ty.align < member.ty.align {
+                ty.align = member.ty.align;
             }
-            *size = align_to(*size, *align);
+            if ty.size < member.ty.size {
+                ty.size = member.ty.size;
+            }
         }
+        ty.size = align_to(ty.size, ty.align);
 
         if tag != None {
             self.push_tag_scope(&tag.unwrap().literal, ty.clone());
@@ -1234,10 +1230,10 @@ impl Parser {
     fn get_struct_member(&self, ty: &Type) -> Member {
         let token = self.tokenizer.cur_token();
 
-        match ty {
-            Type::Struct    { members, .. } |
-            Type::Union     { members, .. } => {
-                for member in members {
+        match ty.kind {
+            TypeKind::Struct    |
+            TypeKind::Union     =>  {
+                for member in &ty.members {
                     if member.name == token.literal {
                         return *member.clone();
                     }
@@ -1253,9 +1249,9 @@ impl Parser {
     fn struct_ref(&mut self, lhs: &Node) -> Node {
         let token = self.tokenizer.cur_token();
 
-        match lhs.get_type() {
-            Type::Struct    {..}    |
-            Type::Union     {..}    => (),
+        match lhs.get_type().kind {
+            TypeKind::Struct    |
+            TypeKind::Union     => (),
             _   =>{
                 lhs.get_token().error("not a struct nor union");
             },
@@ -1319,7 +1315,7 @@ impl Parser {
 
         let token = self.tokenizer.cur_token().clone();
         let ty = self.declarator(basety.clone());
-        let name = ty.get_name().unwrap();
+        let name = ty.name.as_ref().unwrap().literal.clone();
 
         let params = Env {
             parent: None,
@@ -1381,18 +1377,15 @@ impl Parser {
 
         self.tokenizer.next_token();
 
-        if let Type::Function { .. } = self.is_func_params() {
-            self.tokenizer.idx = idx;
-            true
-        } else {
-            self.tokenizer.idx = idx;
-            false
-        }
+        self.func_params_dummy();
+
+        self.tokenizer.idx = idx;
+        true
     }
 
     // func-params  = (param ("," param)*)?
     // param        = declspec declarator
-    fn is_func_params(&mut self) -> Type {
+    fn func_params_dummy(&mut self) {
         let mut params = Vec::new();
         while !self.tokenizer.consume(")") {
             if params.len() != 0 {
@@ -1403,13 +1396,6 @@ impl Parser {
             let ty = self.declarator(basety);
             let token = self.tokenizer.cur_token().clone();
             params.push((ty, token));
-        }
-
-        Type::Function {
-            name:   None,
-            params: None,
-            ret_ty: Box::new(ty_long(None)),
-            align:  1,
         }
     }
 
