@@ -354,12 +354,12 @@ impl Parser {
         obj
     }
 
-    fn new_param_lvars(&mut self, params: &Vec<(Type, Token)>) {
-        for (param, token) in params {
-            if self.scope.borrow().find_lvar(&token.literal) != None {
-                token.error(&format!("redefinition of '{}'", &token.literal));
+    fn new_param_lvars(&mut self, params: &Vec<Type>) {
+        for param in params {
+            if self.scope.borrow().find_lvar(&param.name.as_ref().unwrap().literal) != None {
+                param.name.as_ref().unwrap().error(&format!("redefinition of '{}'", &param.name.as_ref().unwrap().literal));
             }
-            self.new_lvar(param, token);
+            self.new_lvar(param, &param.name.as_ref().unwrap());
         }
     }
 
@@ -446,14 +446,13 @@ impl Parser {
 
             let basety = self.declspec();
             let ty = self.declarator(basety);
-            let token = self.tokenizer.cur_token().clone();
-            params.push((ty, token));
+            params.push(ty);
         }
         self.new_param_lvars(&params);
 
         new_function (
             Some(Rc::clone(&ty.name.as_ref().unwrap())),
-            params.into_iter().map(|elm| elm.0).collect::<Vec<Type>>(),
+            params,
             Some(Box::new(ty)),
         )
     }
