@@ -4,6 +4,10 @@ use std::collections::HashMap;
 use crate::tokenizer::{ Token, TokenKind, Tokenizer };
 use crate::ty::*;
 
+static KW: &'static [&str] = &[
+    "void", "char", "short", "int", "long", "struct", "union",
+];
+
 // Ast node type
 #[derive(Debug, Clone, PartialEq)]
 pub enum Node {
@@ -113,9 +117,8 @@ impl Node {
                 match ty.kind {
                     TypeKind::Ptr       |
                     TypeKind::Array     =>  *ty.base.unwrap(),
-                    _   =>  {
-                        self.get_token().error("invalid pointer dereference");
-                    },
+                    TypeKind::Void      =>  self.get_token().error("deferencing a void pointer"),
+                    _   =>  self.get_token().error("invalid pointer dereference"),
                 }
             },
             Node::ExprStmt (expr, ..)   => expr.get_type(),
@@ -404,8 +407,13 @@ impl Parser {
         token.literal.to_string()
     }
 
-    // declspec = "char" | "shoht" | "int" | "long" | struct-decl | union-decl
+    // declspec = "void" | "char" | "shoht" | "int" | "long" | 
+    //          | struct-decl | union-decl
     fn declspec(&mut self) -> Type {
+        if self.tokenizer.consume("void") {
+            return new_void(None);
+        }
+
         if self.tokenizer.consume("char") {
             return new_char(None);
         }
@@ -544,6 +552,11 @@ impl Parser {
 
             let tok_lhs = self.tokenizer.cur_token().clone();
             let ty = self.declarator(basety.clone());
+
+            if ty.kind == TypeKind::Void {
+                ty.name.unwrap().error("variable declared void");
+            }
+
             let name = ty.name.as_ref().unwrap().literal.clone();
             let obj = Rc::clone(&self.new_lvar(&ty, &tok_lhs));
 
@@ -577,8 +590,13 @@ impl Parser {
     }
 
     fn is_typename(&self, token: &Token) -> bool {
-       token.equal("char") || token.equal("short") || token.equal("int") ||
-       token.equal("long") || token.equal("struct") || token.equal("union")
+        for kw in KW.iter() {
+            if token.equal(kw) {
+                return true;
+            }
+        }
+
+        false
     }
 
     // stmt = "return" expr ";"

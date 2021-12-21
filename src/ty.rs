@@ -10,6 +10,7 @@ pub struct Member {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum TypeKind {
+    Void,
     Char,
     Short,
     Int,
@@ -41,6 +42,21 @@ pub struct Type {
 
     // Struct or Union
     pub members:    Vec<Box<Member>>,
+}
+
+pub fn new_void(name: Option<Rc<Token>>) -> Type {
+    Type {
+        kind:           TypeKind::Void,
+        name,
+        size:           1,
+        align:          1,
+        base:           None,
+        len:            0,
+        params:         Vec::new(),
+        ret_ty:         None,
+        is_definition:  false,
+        members:        Vec::new(),
+    }
 }
 
 pub fn new_char(name: Option<Rc<Token>>) -> Type {
