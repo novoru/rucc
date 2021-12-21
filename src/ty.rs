@@ -37,6 +37,7 @@ pub struct Type {
     // Function
     pub params: Vec<Type>,
     pub ret_ty: Option<Box<Type>>,
+    pub is_definition:  bool,
 
     // Struct or Union
     pub members:    Vec<Box<Member>>,
@@ -44,126 +45,135 @@ pub struct Type {
 
 pub fn new_char(name: Option<Rc<Token>>) -> Type {
     Type {
-        kind:       TypeKind::Char,
+        kind:           TypeKind::Char,
         name,
-        size:       1,
-        align:      1,
-        base:       None,
-        len:        0,
-        params:     Vec::new(),
-        ret_ty:     None,
-        members:    Vec::new(),
+        size:           1,
+        align:          1,
+        base:           None,
+        len:            0,
+        params:         Vec::new(),
+        ret_ty:         None,
+        is_definition:  false,
+        members:        Vec::new(),
     }
 }
 
 pub fn new_short(name: Option<Rc<Token>>) -> Type {
     Type {
-        kind:       TypeKind::Short,
+        kind:           TypeKind::Short,
         name,
-        size:       2,
-        align:      2,
-        base:       None,
-        len:        0,
-        params:     Vec::new(),
-        ret_ty:     None,
-        members:    Vec::new(),
+        size:           2,
+        align:          2,
+        base:           None,
+        len:            0,
+        params:         Vec::new(),
+        ret_ty:         None,
+        is_definition:  false,
+        members:        Vec::new(),
     }
 }
 
 pub fn new_int(name: Option<Rc<Token>>) -> Type {
     Type {
-        kind:       TypeKind::Int,
+        kind:           TypeKind::Int,
         name,
-        size:       4,
-        align:      4,
-        base:       None,
-        len:        0,
-        params:     Vec::new(),
-        ret_ty:     None,
-        members:    Vec::new(),
+        size:           4,
+        align:          4,
+        base:           None,
+        len:            0,
+        params:         Vec::new(),
+        ret_ty:         None,
+        is_definition:  false,
+        members:        Vec::new(),
     }
 }
 
 pub fn new_long(name: Option<Rc<Token>>) -> Type {
     Type {
-        kind:       TypeKind::Long,
+        kind:           TypeKind::Long,
         name,
-        size:       8,
-        align:      8,
-        base:       None,
-        len:        0,
-        params:     Vec::new(),
-        ret_ty:     None,
-        members:    Vec::new(),
+        size:           8,
+        align:          8,
+        base:           None,
+        len:            0,
+        params:         Vec::new(),
+        ret_ty:         None,
+        is_definition:  false,
+        members:        Vec::new(),
     }
 }
 
 pub fn new_ptr(name: Option<Rc<Token>>, base: Option<Box<Type>>) -> Type {
     Type {
-        kind:       TypeKind::Ptr,
+        kind:           TypeKind::Ptr,
         name,
-        size:       8,
-        align:      8,
-        base:       base,
-        len:        0,
-        params:     Vec::new(),
-        ret_ty:     None,
-        members:    Vec::new(),
+        size:           8,
+        align:          8,
+        base:           base,
+        len:            0,
+        params:         Vec::new(),
+        ret_ty:         None,
+        is_definition:  false,
+        members:        Vec::new(),
     }
 }
 
 pub fn new_function(name: Option<Rc<Token>>, params: Vec<Type>, ret_ty: Option<Box<Type>>) -> Type {
     Type {
-        kind:       TypeKind::Function,
+        kind:           TypeKind::Function,
         name,
-        size:       0,
-        align:      1,
-        base:       None,
-        len:        0,
+        size:           0,
+        align:          1,
+        base:           None,
+        len:            0,
         params,
         ret_ty,
-        members:    Vec::new(),
+        is_definition:  false,
+        members:        Vec::new(),
     }
 }
 
 pub fn new_array(name: Option<Rc<Token>>, base: Option<Box<Type>>, size: u64, len: u64, align: u64) -> Type {
     Type {
-        kind:       TypeKind::Array,
+        kind:           TypeKind::Array,
         name,
-        size:       size,
-        align:      align,
-        base:       base,
-        len:        len,
-        params:     Vec::new(),
-        ret_ty:     None,
-        members:    Vec::new(),
+        size:           size,
+        align:          align,
+        base:           base,
+        len:            len,
+        params:         Vec::new(),
+        ret_ty:         None,
+        is_definition:  false,
+        members:        Vec::new(),
     }
 }
 
 pub fn new_struct(name: Option<Rc<Token>>, members: Vec<Box<Member>>) -> Type {
     Type {
-        kind:       TypeKind::Struct,
+        kind:           TypeKind::Struct,
         name,
-        size:       0,
-        align:      1,
-        base:       None,
-        len:        0,
-        params:     Vec::new(),
-        ret_ty:     None,
+        size:           0,
+        align:          1,
+        base:           None,
+        len:            0,
+        params:         Vec::new(),
+        ret_ty:         None,
+        is_definition:  false,
         members,
     }
 }
 
 pub fn new_union(name: Option<Rc<Token>>, members: Vec<Box<Member>>) -> Type {
     Type {
-        kind:       TypeKind::Union,
+        kind:           TypeKind::Union,
         name,
-        size:       0,
-        align:      1,
-        base:       None,
-        len:        0,
-        params:     Vec::new(),
-        ret_ty:     None,
+        size:           0,
+        align:          1,
+        base:           None,
+        len:            0,
+        params:         Vec::new(),
+        ret_ty:         None,
+        is_definition:  false,
         members,
     }
 }

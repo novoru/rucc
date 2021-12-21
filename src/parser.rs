@@ -448,7 +448,6 @@ impl Parser {
             let ty = self.declarator(basety);
             params.push(ty);
         }
-        self.new_param_lvars(&params);
 
         new_function (
             Some(Rc::clone(&ty.name.as_ref().unwrap())),
@@ -1303,8 +1302,7 @@ impl Parser {
     }
 
     // function-definition = declspec declarator compound-stmt
-    fn function(&mut self, basety: Type) -> Node {
-        self.enter_scope();
+    fn function(&mut self, basety: Type) -> Option<Node> {
         let locals = Rc::new(RefCell::new( Env {
             parent:     Some(Rc::clone(&self.global)),
             objs:       Vec::new(),
@@ -1313,8 +1311,18 @@ impl Parser {
         self.local = Rc::clone(&locals);
 
         let token = self.tokenizer.cur_token().clone();
-        let ty = self.declarator(basety.clone());
+        let mut ty = self.declarator(basety.clone());
+        ty.is_definition = !self.tokenizer.consume(";");
         let name = ty.name.as_ref().unwrap().literal.clone();
+        self.new_gvar(&ty, &token);
+
+
+        if !ty.is_definition {
+            return None;
+        }
+
+        self.enter_scope();
+        self.new_param_lvars(&ty.params);
 
         let params = Env {
             parent: None,
@@ -1326,14 +1334,14 @@ impl Parser {
         body.push(Box::new(self.compound_stmt()));
 
         self.leave_scope();
-        Node::Function {
+        Some(Node::Function {
             name,
             params,
             body,
             locals: Rc::clone(&self.local),
             ret_ty: Some(ty),
             token,
-        }
+        })
     }
 
     fn global_variables(&mut self, basety: Type) {
@@ -1408,7 +1416,9 @@ impl Parser {
             let basety = self.declspec();
 
             if self.is_function() {
-                prog.push(Box::new(self.function(basety)));
+                if let Some(func) = self.function(basety) {
+                    prog.push(Box::new(func));
+                }
                 continue;
             }
             self.global_variables(basety);

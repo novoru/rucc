@@ -340,6 +340,10 @@ impl CodeGenerator {
 
     fn emit_data(&mut self, objs: &Vec<Rc<RefCell<Obj>>>) {
         for var in objs {
+            if var.borrow().ty.kind == TypeKind::Function {
+                continue;
+            }
+
             writeln!(self.output, "  .data").unwrap();
             writeln!(self.output, "  .globl {}", var.borrow().ty.name.as_ref().unwrap().literal).unwrap();
             writeln!(self.output, "{}:", var.borrow().ty.name.as_ref().unwrap().literal).unwrap();
