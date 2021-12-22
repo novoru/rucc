@@ -8,6 +8,13 @@ static KW: &'static [&str] = &[
     "void", "char", "short", "int", "long", "struct", "union",
 ];
 
+const VOID:     u16 = 1 << 0;
+const CHAR:     u16 = 1 << 2;
+const SHORT:    u16 = 1 << 4;
+const INT:      u16 = 1 << 6;
+const LONG:     u16 = 1 << 8;
+const OTHER:    u16 = 1 << 10;
+
 // Ast node type
 #[derive(Debug, Clone, PartialEq)]
 pub enum Node {
@@ -410,35 +417,49 @@ impl Parser {
     // declspec = "void" | "char" | "shoht" | "int" | "long" | 
     //          | struct-decl | union-decl
     fn declspec(&mut self) -> Type {
-        if self.tokenizer.consume("void") {
-            return new_void(None);
+
+        let mut ty = new_int(None);
+        let mut counter = 0;
+
+        while self.is_typename(&self.tokenizer.cur_token()) {
+            if self.tokenizer.consume("struct") {
+                ty = self.struct_decl();
+                counter += OTHER;
+                continue;
+            } else if self.tokenizer.consume("union") {
+                ty = self.union_decl();
+                counter += OTHER;
+                continue;
+            }
+            
+
+            if self.tokenizer.consume("void") {
+                counter += VOID;
+            } else if self.tokenizer.consume("char") {
+                counter += CHAR;
+            } else if self.tokenizer.consume("short") {
+                counter += SHORT;
+            } else if self.tokenizer.consume("int") {
+                counter += INT;
+            } else if self.tokenizer.consume("long") {
+                counter += LONG;
+            }
+
+            match counter {
+                _ if counter == VOID                =>  ty = new_void(None),
+                _ if counter == CHAR                =>  ty = new_char(None),
+                _ if counter == SHORT               =>  ty = new_short(None),
+                _ if counter == SHORT + INT         =>  ty = new_short(None),
+                _ if counter == INT                 =>  ty = new_int(None),
+                _ if counter == LONG                =>  ty = new_long(None),
+                _ if counter == LONG + INT          =>  ty = new_long(None),
+                _ if counter == LONG + LONG         =>  ty = new_long(None),
+                _ if counter == LONG + LONG + INT   =>  ty = new_long(None),
+                _   =>  self.tokenizer.cur_token().error("invalid type"),
+            }
         }
 
-        if self.tokenizer.consume("char") {
-            return new_char(None);
-        }
-
-        if self.tokenizer.consume("short") {
-            return new_short(None);
-        }
-
-        if self.tokenizer.consume("int") {
-            return new_int(None);
-        }
-
-        if self.tokenizer.consume("long") {
-            return new_long(None);
-        }
-
-        if self.tokenizer.consume("struct") {
-            return self.struct_decl();
-        }
-
-        if self.tokenizer.consume("union") {
-            return self.union_decl();
-        }
-
-        self.tokenizer.cur_token().error("typename expected");
+        ty
     }
 
     // func-params = (param ("," param)*)? ")"
