@@ -5,7 +5,7 @@ use crate::tokenizer::{ Token, TokenKind, Tokenizer };
 use crate::ty::*;
 
 static KW: &'static [&str] = &[
-    "void", "char", "short", "int", "long", "struct", "union",
+    "void", "char", "short", "int", "long", "struct", "union", "typedef"
 ];
 
 const VOID:     u16 = 1 << 0;
@@ -253,9 +253,10 @@ impl Env {
 
 #[derive(Debug)]
 pub struct Scope {
-    parent: Option<Rc<RefCell<Scope>>>,
-    objs:   Vec<Rc<RefCell<Obj>>>,
-    tags:   HashMap<String, Type>,   // struct tags or union tags
+    parent:     Option<Rc<RefCell<Scope>>>,
+    objs:       Vec<Rc<RefCell<Obj>>>,
+    tags:       HashMap<String, Type>,      // struct tags or union tags
+    typedefs:   HashMap<String, Type>,      // typedef
 }
 
 impl Scope {
@@ -291,6 +292,24 @@ impl Scope {
             None
         }
     }
+
+    fn find_typedef(&self, name: String) -> Option<Type> {
+        if let Some(typedef) = self.typedefs.get(&name) {
+            return Some(typedef.clone());
+        }
+
+        if let Some(parent) = &self.parent {
+            return parent.borrow().find_typedef(name);
+        }
+
+        None
+    }
+}
+
+#[derive(Debug)]
+struct VarAttr {
+    token:      Option<Token>,
+    is_typedef: bool,
 }
 
 #[derive(Debug)]
@@ -321,18 +340,20 @@ impl Parser {
                 stack_size: 0,
             })),
             scope:  Rc::new(RefCell::new( Scope {
-                parent: None,
-                objs:   Vec::new(),
-                tags:   HashMap::new(),
+                parent:     None,
+                objs:       Vec::new(),
+                tags:       HashMap::new(),
+                typedefs:   HashMap::new(),
             })),
         }
     }
 
     fn enter_scope(&mut self) {
         self.scope = Rc::new(RefCell::new( Scope {
-            parent: Some(Rc::clone(&self.scope)),
-            objs:   Vec::new(),
-            tags:   HashMap::new(),
+            parent:     Some(Rc::clone(&self.scope)),
+            objs:       Vec::new(),
+            tags:       HashMap::new(),
+            typedefs:   HashMap::new(),
         }));
     }
 
@@ -348,6 +369,10 @@ impl Parser {
 
     fn push_tag_scope(&mut self, name: &str, tag: Type) {
         self.scope.borrow_mut().tags.insert(name.to_string(), tag);
+    }
+
+    fn push_typedef_scope(&mut self, name: &str, typedef: Type) {
+        self.scope.borrow_mut().typedefs.insert(name.to_string(), typedef);
     }
 
     fn new_lvar(&mut self, ty: &Type, token: &Token) -> Rc<RefCell<Obj>> {
@@ -414,22 +439,47 @@ impl Parser {
         token.literal.to_string()
     }
 
-    // declspec = "void" | "char" | "shoht" | "int" | "long" | 
-    //          | struct-decl | union-decl
-    fn declspec(&mut self) -> Type {
-
+    // declspec = ("void" | "char" | "shoht" | "int" | "long" | 
+    //          | struct-decl | union-decl | typedef-name)+
+    fn declspec(&mut self, attr: &mut Option<VarAttr>) -> Type {
         let mut ty = new_int(None);
         let mut counter = 0;
 
         while self.is_typename(&self.tokenizer.cur_token()) {
-            if self.tokenizer.consume("struct") {
-                ty = self.struct_decl();
-                counter += OTHER;
+            if self.tokenizer.consume("typedef") {
+                if let Some(ref mut attr) = attr {
+                    attr.token = Some(self.tokenizer.cur_token().clone());
+                    attr.is_typedef = true;
+                } else {
+                    self.tokenizer.cur_token()
+                        .error("storage class specifier is not allowed in this context");
+                }
                 continue;
-            } else if self.tokenizer.consume("union") {
-                ty = self.union_decl();
-                counter += OTHER;
-                continue;
+            }
+
+            let ty2 = self.scope.borrow()
+                .find_typedef(self.tokenizer.cur_token().literal.clone());
+
+            let token = self.tokenizer.cur_token().clone();
+            if token.equal("struct") || token.equal("union") || ty2.is_some() {
+                if counter > 0 {
+                    break;
+                }
+
+                if self.tokenizer.consume("struct") {
+                    ty = self.struct_decl();
+                    counter += OTHER;
+                    continue;
+                } else if self.tokenizer.consume("union") {
+                    ty = self.union_decl();
+                    counter += OTHER;
+                    continue;
+                } else if ty2.is_some() {
+                    self.tokenizer.next_token();
+                    ty = ty2.unwrap();
+                    counter += OTHER;
+                    continue;
+                }
             }
             
 
@@ -473,7 +523,7 @@ impl Parser {
                 self.tokenizer.skip(",");
             }
 
-            let basety = self.declspec();
+            let basety = self.declspec(&mut None);
             let ty = self.declarator(basety);
             params.push(ty);
         }
@@ -558,9 +608,8 @@ impl Parser {
     }
 
     // declaration = declspec (declarator ("=" expr)? ("," declarator ("=" expr)?)*)? ";"
-    fn declaration(&mut self) -> Node {
-        let tok_ty = self.tokenizer.cur_token().clone();
-        let basety = self.declspec();
+    fn declaration(&mut self, basety: Type) -> Node {
+        let token = self.tokenizer.cur_token().clone();
         let mut decls = Vec::new();
 
         let mut i = 0;
@@ -606,7 +655,7 @@ impl Parser {
 
         Node::Block(
             decls,
-            tok_ty,
+            token,
         )
     }
 
@@ -617,7 +666,7 @@ impl Parser {
             }
         }
 
-        false
+        self.scope.borrow().find_typedef(token.literal.clone()).is_some()
     }
 
     // stmt = "return" expr ";"
@@ -721,7 +770,7 @@ impl Parser {
         self.expr_stmt()
     }
 
-    // compound-stmt = "{" (declaration | stmt)* "}"
+    // compound-stmt = "{" (typedef | declaration | stmt)* "}"
     fn compound_stmt(&mut self) -> Node {
         let token = self.tokenizer.cur_token().clone();
         self.tokenizer.skip("{");
@@ -730,7 +779,19 @@ impl Parser {
 
         while !self.tokenizer.consume("}") {
             if self.is_typename(&self.tokenizer.cur_token()) {
-                stmts.push(Box::new(self.declaration()))
+                let token = self.tokenizer.cur_token().clone();
+                let mut attr = Some(VarAttr {
+                    token:      Some(token),
+                    is_typedef: false,
+                });
+                let basety = self.declspec(&mut attr);
+
+                if attr.unwrap().is_typedef {
+                    self.parse_typedef(basety);
+                    continue;
+                }
+                
+                stmts.push(Box::new(self.declaration(basety)))
             } else {
                 stmts.push(Box::new(self.stmt()));
             }
@@ -1007,7 +1068,8 @@ impl Parser {
     //         | str
     //         | num
     fn primary(&mut self) -> Node {
-        if self.tokenizer.cur_token().equal("(") && self.tokenizer.peek_token("{") {
+        if self.tokenizer.cur_token().equal("(") &&
+        self.tokenizer.peek_token("{") {
             let token = self.tokenizer.cur_token().clone();
             self.tokenizer.next_token();
             let node = Node::StmtExpr(
@@ -1060,7 +1122,9 @@ impl Parser {
         }
 
         if token.kind == TokenKind::Str {
-            let var = self.new_string_literal(token.clone(), *token.ty.clone().unwrap());
+            let var = self.new_string_literal(
+                token.clone(), *token.ty.clone().unwrap()
+            );
             self.tokenizer.next_token();
             let ty = token.clone().ty.unwrap();
             return Node::Var {
@@ -1148,7 +1212,7 @@ impl Parser {
         let mut members = Vec::new();
 
         while !self.tokenizer.cur_token().equal("}") {
-            let basety = self.declspec();
+            let basety = self.declspec(&mut None);
             let mut i = 0;
 
             while !self.tokenizer.consume(";") {
@@ -1181,7 +1245,9 @@ impl Parser {
         }
 
         if tag != None && !self.tokenizer.cur_token().equal("{") {
-            let ty = self.scope.borrow().find_tag(tag.as_ref().unwrap().literal.clone());
+            let ty = self.scope.borrow().find_tag(
+                tag.as_ref().unwrap().literal.clone()
+            );
             if ty == None {
                 if let Some(token) = tag {
                     token.error("unknown struct type");
@@ -1211,7 +1277,7 @@ impl Parser {
         }
         ty.size = align_to(offset, ty.align);
 
-        if tag != None {
+        if tag.is_some() {
             self.push_tag_scope(&tag.unwrap().literal, ty.clone());
         }
 
@@ -1229,7 +1295,9 @@ impl Parser {
         }
 
         if tag != None && !self.tokenizer.cur_token().equal("{") {
-            let ty = self.scope.borrow().find_tag(tag.as_ref().unwrap().literal.clone());
+            let ty = self.scope.borrow().find_tag(
+                tag.as_ref().unwrap().literal.clone()
+            );
             if ty == None {
                 if let Some(token) = tag {
                     token.error("unknown union type");
@@ -1340,6 +1408,22 @@ impl Parser {
         }
     }
 
+    fn parse_typedef(&mut self, basety: Type) {
+        let mut first = true;
+
+        while !self.tokenizer.consume(";") {
+            if !first {
+                self.tokenizer.skip(",");
+            }
+            first = false;
+
+            let ty = self.declarator(basety.clone());
+            self.push_typedef_scope(
+                &ty.name.as_ref().unwrap().literal, ty.clone()
+            );
+        }
+    }
+
     // function-definition = declspec declarator compound-stmt
     fn function(&mut self, basety: Type) -> Option<Node> {
         let locals = Rc::new(RefCell::new( Env {
@@ -1353,8 +1437,6 @@ impl Parser {
         let mut ty = self.declarator(basety.clone());
         ty.is_definition = !self.tokenizer.consume(";");
         let name = ty.name.as_ref().unwrap().literal.clone();
-        self.new_gvar(&ty, &token);
-
 
         if !ty.is_definition {
             return None;
@@ -1438,28 +1520,38 @@ impl Parser {
                 self.tokenizer.skip(",");
             }
 
-            let basety = self.declspec();
+            let basety = self.declspec(&mut None);
             let ty = self.declarator(basety);
             let token = self.tokenizer.cur_token().clone();
             params.push((ty, token));
         }
     }
 
-    // program = (function-definition | global-variable)*
+    // program = (typedef | function-definition | global-variable)*
     pub fn parse(&mut self) -> Node {
         let token = self.tokenizer.cur_token().clone();
         let mut prog = Vec::new();
         self.enter_scope();
 
         while self.tokenizer.cur_token().kind != TokenKind::Eof {
-            let basety = self.declspec();
+            let mut attr = Some(VarAttr {
+                token:      None,
+                is_typedef: false,
+            });
+            let basety = self.declspec(&mut attr);
 
             if self.is_function() {
-                if let Some(func) = self.function(basety) {
+                if let Some(func) = self.function(basety.clone()) {
                     prog.push(Box::new(func));
                 }
                 continue;
             }
+
+            if attr.unwrap().is_typedef {
+                self.parse_typedef(basety);
+                continue;
+            }
+
             self.global_variables(basety);
         }
 
