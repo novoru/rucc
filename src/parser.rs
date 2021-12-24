@@ -541,11 +541,11 @@ impl Parser {
     fn type_suffix(&mut self, ty: Type) -> Type {
         let mut ty = ty.clone();
 
-        if self.tokenizer.peek_token("(") {
+        if self.tokenizer.peek_token().equal("(") {
             return self.func_params(ty);
         }
 
-        if self.tokenizer.peek_token("[") {
+        if self.tokenizer.peek_token().equal("[") {
             self.tokenizer.next_token();
             self.tokenizer.next_token();
             let token = self.tokenizer.cur_token().clone();
@@ -605,6 +605,27 @@ impl Parser {
         ty = self.type_suffix(ty);
 
         ty
+    }
+
+    // abstract-declarator = "*"* ("(" abstract-declarator ")")? type-suffix
+    fn abstract_declarator(&mut self, mut ty: Type) -> Type {
+        while self.tokenizer.consume("*") {
+            ty = new_ptr(None, Some(Box::new(ty)));
+        }
+
+        if self.tokenizer.cur_token().equal("(") {
+            ty = self.abstract_declarator(ty);
+            self.tokenizer.next_token();
+            ty = self.type_suffix(ty);
+            return self.abstract_declarator(ty);
+        }
+
+        return self.type_suffix(ty);
+    }
+
+    fn typename(&mut self) -> Type {
+        let ty = self.declspec(&mut None);
+        return self.abstract_declarator(ty);
     }
 
     // declaration = declspec (declarator ("=" expr)? ("," declarator ("=" expr)?)*)? ";"
@@ -1063,13 +1084,14 @@ impl Parser {
 
     // primary = "(" "{" compound-stmt "}" ")"
     //         | "(" expr ")"
+    //         | "sizeof" "(" type-name ")"
     //         | "sizeof" unary
     //         | ident args?
     //         | str
     //         | num
     fn primary(&mut self) -> Node {
         if self.tokenizer.cur_token().equal("(") &&
-        self.tokenizer.peek_token("{") {
+        self.tokenizer.peek_token().equal("{") {
             let token = self.tokenizer.cur_token().clone();
             self.tokenizer.next_token();
             let node = Node::StmtExpr(
@@ -1090,16 +1112,30 @@ impl Parser {
         let token = self.tokenizer.cur_token().clone();
 
         if self.tokenizer.consume("sizeof") {
-            let node = self.unary();
-            return Node::Num(
-                node.get_type().size,
-                token,
-            );
+            if self.tokenizer.cur_token().equal("(") &&
+               self.is_typename(&self.tokenizer.peek_token()) {
+                self.tokenizer.next_token();
+                let token = self.tokenizer.cur_token().clone();
+                let ty = self.typename();
+                self.tokenizer.skip(")");
+
+                return Node::Num(
+                    ty.size,
+                    token,
+                );
+            }
+            else {
+                let node = self.unary();
+                return Node::Num(
+                    node.get_type().size,
+                    token,
+                );
+            }
         }
 
         if token.kind == TokenKind::Ident {
             // Function call
-            if self.tokenizer.peek_token("(") {
+            if self.tokenizer.peek_token().equal("(") {
                 return self.funcall();
             }
 

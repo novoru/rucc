@@ -237,11 +237,11 @@ impl Tokenizer {
         Some(token.clone())
     }
 
-    pub fn peek_token(&self, s: &str) -> bool {
+    pub fn peek_token(&self) -> Token {
         if self.idx >= self.tokens.len() {
-            return false;
+            return self.tokens[self.idx].clone();
         }
-        self.tokens[self.idx+1].equal(s)
+        self.tokens[self.idx+1].clone()
     } 
 
     pub fn skip(&mut self, s: &str) {
