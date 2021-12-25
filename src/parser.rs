@@ -515,8 +515,6 @@ impl Parser {
     // func-params = (param ("," param)*)? ")"
     // param       = declspec declarator
     fn func_params(&mut self, ty: Type) -> Type {
-        self.tokenizer.next_token();
-        self.tokenizer.next_token();
         let mut params = Vec::new();
         while !self.tokenizer.consume(")") {
             if params.len() != 0 {
@@ -538,26 +536,19 @@ impl Parser {
     // type-suffix = "(" func-pramas
     //             | "[" num "]" type-suffix
     //             | ε
-    fn type_suffix(&mut self, ty: Type) -> Type {
-        let mut ty = ty.clone();
-
-        if self.tokenizer.peek_token().equal("(") {
+    fn type_suffix(&mut self, mut ty: Type) -> Type {
+        if self.tokenizer.consume("(") {
             return self.func_params(ty);
         }
 
-        if self.tokenizer.peek_token().equal("[") {
-            self.tokenizer.next_token();
-            self.tokenizer.next_token();
+        if self.tokenizer.consume("[") {
             let token = self.tokenizer.cur_token().clone();
             let sz = if let Some(val) = self.tokenizer.next_token().unwrap().val {
                 val
             } else {
                 token.error("expected a number");
             };
-            let token = self.tokenizer.cur_token();
-            if !token.equal("]") {
-                token.error("expected ']'");
-            }
+            self.tokenizer.skip("]");
             ty = self.type_suffix(ty.clone());
 
             return new_array (
@@ -568,14 +559,12 @@ impl Parser {
                 ty.align,
             );
         }
-        self.tokenizer.next_token();
 
         ty
     }
 
     // declarator = "*"* ("(" ident ")" | "(" declarator ")" | ident) type-suffix
-    fn declarator(&mut self, ty: Type) -> Type {
-        let mut ty = ty.clone();
+    fn declarator(&mut self, mut ty: Type) -> Type {
         while self.tokenizer.consume("*") {
             ty = new_ptr (
                 None,
@@ -586,14 +575,13 @@ impl Parser {
         if self.tokenizer.consume("(") {
             let start = self.tokenizer.idx;
             self.declarator(ty.clone());
-            if !self.tokenizer.cur_token().equal(")") {
-                self.tokenizer.cur_token().error("expected ')'");
-            }
-            ty = self.type_suffix(ty);
+            self.tokenizer.skip(")");
+            ty = self.type_suffix(ty.clone());
             let end = self.tokenizer.idx;
             self.tokenizer.idx = start;
-            ty = self.declarator(ty);
+            ty = self.declarator(ty.clone());
             self.tokenizer.idx = end;
+
             return ty;
         }
          
@@ -601,7 +589,9 @@ impl Parser {
         if token.kind != TokenKind::Ident {
             token.error("expected a variable name");
         }
+
         ty.name = Some(Rc::new(token));
+        self.tokenizer.next_token();
         ty = self.type_suffix(ty);
 
         ty
@@ -613,16 +603,28 @@ impl Parser {
             ty = new_ptr(None, Some(Box::new(ty)));
         }
 
-        if self.tokenizer.cur_token().equal("(") {
-            ty = self.abstract_declarator(ty);
-            self.tokenizer.next_token();
+        if self.tokenizer.consume("(") {
+            let start = self.tokenizer.idx;
+            self.abstract_declarator(ty.clone());
+            
+            self.tokenizer.skip(")");
+
+            let end = self.tokenizer.idx;
             ty = self.type_suffix(ty);
-            return self.abstract_declarator(ty);
+
+            self.tokenizer.idx = start;
+            ty = self.abstract_declarator(ty);
+
+            self.tokenizer.idx = end;
+            self.type_suffix(ty.clone());
+            
+            return ty;
         }
 
         return self.type_suffix(ty);
     }
 
+    // type-name = declspec abstract-declarator
     fn typename(&mut self) -> Type {
         let ty = self.declspec(&mut None);
         return self.abstract_declarator(ty);
