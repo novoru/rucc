@@ -20,6 +20,14 @@ static ARGREG64: &'static [&str] = &[
     "%rdi", "%rsi", "%rdx", "%rcx", "%r8", "%r9"
 ];
 
+fn reg_name(lhs: &Node) -> (String, String) {
+    if lhs.get_type().kind == TypeKind::Long || lhs.get_type().base.is_some() {
+        ("%rax".to_string(), "%rdi".to_string())
+    } else {
+        ("%eax".to_string(), "%edi".to_string())
+    }
+}
+
 pub struct CodeGenerator {
     cur_func:   Option<Rc<Node>>,
     count:      u64,
@@ -122,71 +130,83 @@ impl CodeGenerator {
         match node {
             Node::Num (val, ..)         => writeln!(self.output, "  mov ${}, %rax", val).unwrap(),
             Node::Add { lhs, rhs, .. }  =>  {
+                let (ax, di) = reg_name(lhs);
                 self.gen_expr(rhs);
                 self.push();
                 self.gen_expr(lhs);
                 self.pop("%rdi");
-                writeln!(self.output, "  add %rdi, %rax").unwrap();
+                writeln!(self.output, "  add {}, {}", &di, &ax).unwrap();
             },
             Node::Sub { lhs, rhs, .. }  =>  {
+                let (ax, di) = reg_name(lhs);
                 self.gen_expr(rhs);
                 self.push();
                 self.gen_expr(lhs);
                 self.pop("%rdi");
-                writeln!(self.output, "  sub %rdi, %rax").unwrap();
+                writeln!(self.output, "  sub {}, {}", &di, &ax).unwrap();
             },
             Node::Mul { lhs, rhs, .. }  =>  {
+                let (ax, di) = reg_name(lhs);
                 self.gen_expr(rhs);
                 self.push();
                 self.gen_expr(lhs);
                 self.pop("%rdi");
-                writeln!(self.output, "  imul %rdi, %rax").unwrap();
+                writeln!(self.output, "  imul {}, {}", &di, &ax).unwrap();
             },
             Node::Div { lhs, rhs, .. }  =>  {
+                let (_, di) = reg_name(lhs);
                 self.gen_expr(rhs);
                 self.push();
                 self.gen_expr(lhs);
                 self.pop("%rdi");
-                writeln!(self.output, "  cqo").unwrap();
-                writeln!(self.output, "  idiv %rdi").unwrap();
+                if lhs.get_type().size == 8 {
+                    writeln!(self.output, "  cqo").unwrap();
+                } else {
+                    writeln!(self.output, "  cdq").unwrap();
+                }
+                writeln!(self.output, "  idiv {}", di).unwrap();
             },
             Node::Neg (expr, ..)    =>   {
                 self.gen_expr(expr);
                 writeln!(self.output, "  neg %rax").unwrap();
             },
             Node::Eq { lhs, rhs, .. }   =>  {
+                let (ax, di) = reg_name(lhs);
                 self.gen_expr(rhs);
                 self.push();
                 self.gen_expr(lhs);
                 self.pop("%rdi");
-                writeln!(self.output, "  cmp %rdi, %rax").unwrap();
+                writeln!(self.output, "  cmp {}, {}", di, ax).unwrap();
                 writeln!(self.output, "  sete %al").unwrap();
                 writeln!(self.output, "  movzb %al, %rax").unwrap();
             },
             Node::Ne { lhs, rhs, .. }   =>  {
+                let (ax, di) = reg_name(lhs);
                 self.gen_expr(rhs);
                 self.push();
                 self.gen_expr(lhs);
                 self.pop("%rdi");
-                writeln!(self.output, "  cmp %rdi, %rax").unwrap();
+                writeln!(self.output, "  cmp {}, {}", di, ax).unwrap();
                 writeln!(self.output, "  setne %al").unwrap();
                 writeln!(self.output, "  movzb %al, %rax").unwrap();
             },
             Node::Lt { lhs, rhs, .. }   =>  {
+                let (ax, di) = reg_name(lhs);
                 self.gen_expr(rhs);
                 self.push();
                 self.gen_expr(lhs);
                 self.pop("%rdi");
-                writeln!(self.output, "  cmp %rdi, %rax").unwrap();
+                writeln!(self.output, "  cmp {}, {}", di, ax).unwrap();
                 writeln!(self.output, "  setl %al").unwrap();
                 writeln!(self.output, "  movzb %al, %rax").unwrap();
             },
             Node::Le { lhs, rhs, .. }   =>  {
+                let (ax, di) = reg_name(lhs);
                 self.gen_expr(rhs);
                 self.push();
                 self.gen_expr(lhs);
                 self.pop("%rdi");
-                writeln!(self.output, "  cmp %rdi, %rax").unwrap();
+                writeln!(self.output, "  cmp {}, {}", di, ax).unwrap();
                 writeln!(self.output, "  setle %al").unwrap();
                 writeln!(self.output, "  movzb %al, %rax").unwrap();
             },
