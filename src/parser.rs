@@ -78,6 +78,11 @@ pub enum Node {
         token:  Token,
     },
     Num         ( u64, Token ),                                     // Integer
+    Cast        {
+        expr:   Box<Node>,
+        ty:     Type,
+        token:  Token,
+    }
 }
 
 impl Node {
@@ -140,6 +145,7 @@ impl Node {
             Node::Var { ty, .. }        =>  ty.clone(),
             Node::FuncCall { .. }       |
             Node::Num (..)              =>  new_long(None),
+            Node::Cast { ty, .. }       =>  ty.clone(),
             _   =>  {
                 self.get_token().error("not an expression");
             },
@@ -172,7 +178,8 @@ impl Node {
             Node::FuncCall  { token, .. }   |
             Node::Function  { token, .. }   |
             Node::Program   { token, .. }   |
-            Node::Num       ( .., token )   =>  token,
+            Node::Num       ( .., token )   |
+            Node::Cast      { token, .. }   =>  token,
         }
     }
 }
@@ -606,7 +613,7 @@ impl Parser {
         if self.tokenizer.consume("(") {
             let start = self.tokenizer.idx;
             self.abstract_declarator(ty.clone());
-            
+
             self.tokenizer.skip(")");
 
             let end = self.tokenizer.idx;
@@ -1185,16 +1192,16 @@ impl Parser {
         token.error("expected an expression");
     }
 
-    // mul = unary ("*" unary | "/" unary)*
+    // mul = cast ("*" cast | "/" cast)*
     fn mul(&mut self) -> Node {
-        let mut node = self.unary();
+        let mut node = self.cast();
         
         loop {
             let token = self.tokenizer.cur_token().clone();
             if self.tokenizer.consume("*") {
                 node = Node::Mul {
                     lhs: Box::new(node),
-                    rhs: Box::new(self.unary()),
+                    rhs: Box::new(self.cast()),
                     token,
                 };
                 continue;
@@ -1203,7 +1210,7 @@ impl Parser {
             if self.tokenizer.consume("/") {
                 node = Node::Div {
                     lhs: Box::new(node),
-                    rhs: Box::new(self.unary()),
+                    rhs: Box::new(self.cast()),
                     token,
                 };
                 continue;
@@ -1213,31 +1220,53 @@ impl Parser {
         }
     }
 
-    // unary = ("+" | "-" | "*" | "&") unary
+    // cast = "(" type-name ")" cast | unary
+    fn cast(&mut self) -> Node {
+        let idx = self.tokenizer.idx;
+        if self.tokenizer.consume("(") {
+            let token = self.tokenizer.cur_token().clone();
+            if self.is_typename(&token) {
+                let ty = self.typename();
+                self.tokenizer.skip(")");
+                let node = Node::Cast {
+                    expr:   Box::new(self.cast()),
+                    token,
+                    ty:     ty.clone(),
+                };
+
+                return node;
+            }
+        }
+
+        self.tokenizer.idx = idx;
+        return self.unary();
+    }
+
+    // unary = ("+" | "-" | "*" | "&") cast
     //       | postfix
     fn unary(&mut self) -> Node {
         let token = self.tokenizer.cur_token().clone();
         if self.tokenizer.consume("+") {
-            return self.unary();
+            return self.cast();
         }
 
         if self.tokenizer.consume("-") {
             return Node::Neg(
-                Box::new(self.unary()),
+                Box::new(self.cast()),
                 token,
             );
         }
 
         if self.tokenizer.consume("&") {
             return Node::Addr(
-                Box::new(self.unary()),
+                Box::new(self.cast()),
                 token,
             );
         }
         
         if self.tokenizer.consume("*") {
             return Node::Deref(
-                Box::new(self.unary()),
+                Box::new(self.cast()),
                 token,
             );
         }

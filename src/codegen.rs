@@ -20,6 +20,35 @@ static ARGREG64: &'static [&str] = &[
     "%rdi", "%rsi", "%rdx", "%rcx", "%r8", "%r9"
 ];
 
+#[derive(Debug, Copy, Clone)]
+enum TypeId {
+    I8 = 0,
+    I16,
+    I32,
+    I64,
+}
+
+fn get_type_id(ty: &Type) -> TypeId {
+    match ty.kind {
+        TypeKind::Char  =>  TypeId::I8,
+        TypeKind::Short =>  TypeId::I16,
+        TypeKind::Int   =>  TypeId::I32,
+        _               =>  TypeId::I64,
+    }
+}
+
+// The table for type casts
+static I32I8: &'static str  = "movsbl %al, %eax";
+static I32I16: &'static str = "movswl %ax, %eax";
+static I32I64: &'static str = "movsxd %eax, %rax";
+
+static CAST_TABLE: [[Option<&'static str>; 4]; 4] = [
+  [None,        None,           None, Some(I32I64)],    // i8
+  [Some(I32I8), None,           None, Some(I32I64)],    // i16
+  [Some(I32I8), Some(I32I16),   None, Some(I32I64)],    // i32
+  [Some(I32I8), Some(I32I16),   None, None],            // i64
+];
+
 fn reg_name(lhs: &Node) -> (String, String) {
     if lhs.get_type().kind == TypeKind::Long || lhs.get_type().base.is_some() {
         ("%rax".to_string(), "%rdi".to_string())
@@ -96,6 +125,19 @@ impl CodeGenerator {
             2   =>  writeln!(self.output, "  mov %ax, (%rdi)").unwrap(),
             4   =>  writeln!(self.output, "  mov %eax, (%rdi)").unwrap(),
             _   =>  writeln!(self.output, "  mov %rax, (%rdi)").unwrap(),
+        }
+    }
+
+    fn cast(&mut self, from: &Type, to: &Type) {
+        if to.kind == TypeKind::Void {
+            return;
+        }
+    
+        let t1 = get_type_id(from);
+        let t2 = get_type_id(to);
+        
+        if CAST_TABLE[t1 as usize][t2 as usize].is_some() {
+            writeln!(self.output, "  {}", CAST_TABLE[t1 as usize][t2 as usize].unwrap()).unwrap();
         }
     }
 
@@ -237,6 +279,10 @@ impl CodeGenerator {
             Node::Comma { lhs, rhs, .. }    =>  {
                 self.gen_expr(lhs);
                 self.gen_expr(rhs);
+            },
+            Node::Cast { expr, .. } =>  {
+                self.gen_expr(expr);
+                self.cast(&expr.get_type(), &node.get_type());
             },
             Node::FuncCall { name, args, .. } =>  {
                 for arg in args {
