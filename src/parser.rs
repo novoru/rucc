@@ -983,6 +983,7 @@ impl Parser {
             rhs = tmp;
         }
         
+        // ptr + num
         rhs = Node::Mul {
             lhs: Box::new(rhs.clone()),
             rhs: Box::new(Node::Num(

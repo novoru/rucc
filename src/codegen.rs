@@ -98,8 +98,8 @@ impl CodeGenerator {
 
 
         match ty.size {
-            1   =>  writeln!(self.output, "  movsbq (%rax), %rax").unwrap(),
-            2   =>  writeln!(self.output, "  movswq (%rax), %rax").unwrap(),
+            1   =>  writeln!(self.output, "  movsbl (%rax), %eax").unwrap(),
+            2   =>  writeln!(self.output, "  movswl (%rax), %eax").unwrap(),
             4   =>  writeln!(self.output, "  movsxd (%rax), %rax").unwrap(),
             _   =>  writeln!(self.output, "  mov (%rax), %rax").unwrap(),
         }
