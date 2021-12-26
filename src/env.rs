@@ -3,7 +3,7 @@ use std::cell::RefCell;
 
 use crate::tokenizer::Token;
 use crate::ty::Type;
-use crate::obj::Obj;
+use crate::obj::*;
 use crate::scope::Scope;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -28,12 +28,13 @@ impl Env {
             obj.borrow_mut().offset += ty.size;
             offset += obj.borrow().ty.size;
         }
-        
-        let obj = Rc::new(RefCell::new( Obj {
-            offset: ty.size,
-            ty:     ty.clone(),
-            init_data, is_local
-        }));
+
+        let obj = if is_local {
+            Rc::new(RefCell::new( new_lvar(ty.size, ty.clone())))
+        } else {
+            Rc::new(RefCell::new( new_gvar(ty.size, ty.clone(), init_data)))
+        };
+
         self.objs.push(Rc::clone(&obj));
         self.stack_size = align_to(offset, 16);
 
