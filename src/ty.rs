@@ -44,7 +44,7 @@ pub struct Type {
     pub members:    Vec<Box<Member>>,
 }
 
-pub fn new_void(name: Option<Rc<Token>>) -> Type {
+pub fn ty_void(name: Option<Rc<Token>>) -> Type {
     Type {
         kind:           TypeKind::Void,
         name,
@@ -59,7 +59,7 @@ pub fn new_void(name: Option<Rc<Token>>) -> Type {
     }
 }
 
-pub fn new_char(name: Option<Rc<Token>>) -> Type {
+pub fn ty_char(name: Option<Rc<Token>>) -> Type {
     Type {
         kind:           TypeKind::Char,
         name,
@@ -74,7 +74,7 @@ pub fn new_char(name: Option<Rc<Token>>) -> Type {
     }
 }
 
-pub fn new_short(name: Option<Rc<Token>>) -> Type {
+pub fn ty_short(name: Option<Rc<Token>>) -> Type {
     Type {
         kind:           TypeKind::Short,
         name,
@@ -89,7 +89,7 @@ pub fn new_short(name: Option<Rc<Token>>) -> Type {
     }
 }
 
-pub fn new_int(name: Option<Rc<Token>>) -> Type {
+pub fn ty_int(name: Option<Rc<Token>>) -> Type {
     Type {
         kind:           TypeKind::Int,
         name,
@@ -104,7 +104,7 @@ pub fn new_int(name: Option<Rc<Token>>) -> Type {
     }
 }
 
-pub fn new_long(name: Option<Rc<Token>>) -> Type {
+pub fn ty_long(name: Option<Rc<Token>>) -> Type {
     Type {
         kind:           TypeKind::Long,
         name,
@@ -119,7 +119,7 @@ pub fn new_long(name: Option<Rc<Token>>) -> Type {
     }
 }
 
-pub fn new_ptr(name: Option<Rc<Token>>, base: Option<Box<Type>>) -> Type {
+pub fn ty_ptr(name: Option<Rc<Token>>, base: Option<Box<Type>>) -> Type {
     Type {
         kind:           TypeKind::Ptr,
         name,
@@ -134,7 +134,7 @@ pub fn new_ptr(name: Option<Rc<Token>>, base: Option<Box<Type>>) -> Type {
     }
 }
 
-pub fn new_function(name: Option<Rc<Token>>, params: Vec<Type>, ret_ty: Option<Box<Type>>) -> Type {
+pub fn ty_function(name: Option<Rc<Token>>, params: Vec<Type>, ret_ty: Option<Box<Type>>) -> Type {
     Type {
         kind:           TypeKind::Function,
         name,
@@ -149,7 +149,7 @@ pub fn new_function(name: Option<Rc<Token>>, params: Vec<Type>, ret_ty: Option<B
     }
 }
 
-pub fn new_array(name: Option<Rc<Token>>, base: Option<Box<Type>>, size: u64, len: u64, align: u64) -> Type {
+pub fn ty_array(name: Option<Rc<Token>>, base: Option<Box<Type>>, size: u64, len: u64, align: u64) -> Type {
     Type {
         kind:           TypeKind::Array,
         name,
@@ -164,7 +164,7 @@ pub fn new_array(name: Option<Rc<Token>>, base: Option<Box<Type>>, size: u64, le
     }
 }
 
-pub fn new_struct(name: Option<Rc<Token>>, members: Vec<Box<Member>>) -> Type {
+pub fn ty_struct(name: Option<Rc<Token>>, members: Vec<Box<Member>>) -> Type {
     Type {
         kind:           TypeKind::Struct,
         name,
@@ -179,7 +179,7 @@ pub fn new_struct(name: Option<Rc<Token>>, members: Vec<Box<Member>>) -> Type {
     }
 }
 
-pub fn new_union(name: Option<Rc<Token>>, members: Vec<Box<Member>>) -> Type {
+pub fn ty_union(name: Option<Rc<Token>>, members: Vec<Box<Member>>) -> Type {
     Type {
         kind:           TypeKind::Union,
         name,

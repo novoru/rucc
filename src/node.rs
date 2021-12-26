@@ -83,7 +83,7 @@ impl Node {
             Node::Sub { lhs, rhs, .. }  =>  {
                 // ptr - ptr, which returns how many elements are between the two.
                 if lhs.get_type().is_ptr() && rhs.get_type().is_ptr() {
-                    new_int(None)
+                    ty_int(None)
                 } else {
                     lhs.get_type()
                 }
@@ -94,7 +94,7 @@ impl Node {
             Node::Eq { .. }         |
             Node::Ne { .. }         |
             Node::Lt { .. }         |
-            Node::Le { .. }         =>   new_long(None),
+            Node::Le { .. }         =>   ty_long(None),
             Node::Assign { lhs, .. }    =>  {
                 let ty = lhs.get_type();
                 if ty.kind == TypeKind::Array {
@@ -109,9 +109,9 @@ impl Node {
                 let ty = expr.get_type();
                 match ty.kind {
                     TypeKind::Array =>  {
-                        new_ptr(None, Some(Box::new(*ty.base.unwrap().clone())))
+                        ty_ptr(None, Some(Box::new(*ty.base.unwrap().clone())))
                     },
-                    _   =>  new_ptr(None, Some(Box::new(ty.clone()))),
+                    _   =>  ty_ptr(None, Some(Box::new(ty.clone()))),
                 }
                 
             },
@@ -135,7 +135,7 @@ impl Node {
             },
             Node::Var { ty, .. }        =>  ty.clone(),
             Node::FuncCall { .. }       |
-            Node::Num (..)              =>  new_long(None),
+            Node::Num (..)              =>  ty_long(None),
             Node::Cast { ty, .. }       =>  ty.clone(),
             _   =>  self.get_token().error("not an expression"),
         }

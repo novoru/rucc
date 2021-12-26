@@ -72,9 +72,9 @@ impl Token {
             indent:     indent,
         };
         
-        let ty = Some(Box::new(new_array (
+        let ty = Some(Box::new(ty_array (
             Some(Rc::new(token.clone())),
-            Some(Box::new(new_char(None))),
+            Some(Box::new(ty_char(None))),
             len,
             len,
             8,

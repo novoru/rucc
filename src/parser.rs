@@ -3,7 +3,7 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use crate::tokenizer::{ Token, TokenKind, Tokenizer };
 use crate::ty::*;
-use crate::obj::Obj;
+use crate::obj::*;
 use crate::env::{ Env, align_to, };
 use crate::scope::Scope;
 use crate::node::Node;
@@ -156,7 +156,7 @@ impl Parser {
     // declspec = ("void" | "char" | "shoht" | "int" | "long" | 
     //          | struct-decl | union-decl | typedef-name)+
     fn declspec(&mut self, attr: &mut Option<VarAttr>) -> Type {
-        let mut ty = new_int(None);
+        let mut ty = ty_int(None);
         let mut counter = 0;
 
         while self.is_typename(&self.tokenizer.cur_token()) {
@@ -210,15 +210,15 @@ impl Parser {
             }
 
             match counter {
-                _ if counter == VOID                =>  ty = new_void(None),
-                _ if counter == CHAR                =>  ty = new_char(None),
-                _ if counter == SHORT               =>  ty = new_short(None),
-                _ if counter == SHORT + INT         =>  ty = new_short(None),
-                _ if counter == INT                 =>  ty = new_int(None),
-                _ if counter == LONG                =>  ty = new_long(None),
-                _ if counter == LONG + INT          =>  ty = new_long(None),
-                _ if counter == LONG + LONG         =>  ty = new_long(None),
-                _ if counter == LONG + LONG + INT   =>  ty = new_long(None),
+                _ if counter == VOID                =>  ty = ty_void(None),
+                _ if counter == CHAR                =>  ty = ty_char(None),
+                _ if counter == SHORT               =>  ty = ty_short(None),
+                _ if counter == SHORT + INT         =>  ty = ty_short(None),
+                _ if counter == INT                 =>  ty = ty_int(None),
+                _ if counter == LONG                =>  ty = ty_long(None),
+                _ if counter == LONG + INT          =>  ty = ty_long(None),
+                _ if counter == LONG + LONG         =>  ty = ty_long(None),
+                _ if counter == LONG + LONG + INT   =>  ty = ty_long(None),
                 _   =>  self.tokenizer.cur_token().error("invalid type"),
             }
         }
@@ -240,7 +240,7 @@ impl Parser {
             params.push(ty);
         }
 
-        new_function (
+        ty_function (
             Some(Rc::clone(&ty.name.as_ref().unwrap())),
             params,
             Some(Box::new(ty)),
@@ -265,7 +265,7 @@ impl Parser {
             self.tokenizer.skip("]");
             ty = self.type_suffix(ty.clone());
 
-            return new_array (
+            return ty_array (
                 ty.clone().name,
                 Some(Box::new(ty.clone())),
                 ty.clone().size*sz,
@@ -280,7 +280,7 @@ impl Parser {
     // declarator = "*"* ("(" ident ")" | "(" declarator ")" | ident) type-suffix
     fn declarator(&mut self, mut ty: Type) -> Type {
         while self.tokenizer.consume("*") {
-            ty = new_ptr (
+            ty = ty_ptr (
                 None,
                 Some(Box::new(ty.clone())),
             );
@@ -314,7 +314,7 @@ impl Parser {
     // abstract-declarator = "*"* ("(" abstract-declarator ")")? type-suffix
     fn abstract_declarator(&mut self, mut ty: Type) -> Type {
         while self.tokenizer.consume("*") {
-            ty = new_ptr(None, Some(Box::new(ty)));
+            ty = ty_ptr(None, Some(Box::new(ty)));
         }
 
         if self.tokenizer.consume("(") {
@@ -780,6 +780,16 @@ impl Parser {
         let token = self.tokenizer.cur_token().clone();
         let name = self.get_ident();
 
+        let var = self.global.borrow().find_var(&name);
+
+        if let Some(func) = var {
+            if func.borrow().ty.kind != TypeKind::Function {
+                token.error("not a function");
+            }
+        } else {
+            token.error("implicit declaration of a function");
+        }
+
         self.tokenizer.next_token();
         self.tokenizer.next_token();
 
@@ -1034,7 +1044,7 @@ impl Parser {
         self.tokenizer.next_token();
 
         // Construct a struct object.
-        let mut ty = new_struct (
+        let mut ty = ty_struct (
             None,
             self.struct_members(),
         );
@@ -1084,7 +1094,7 @@ impl Parser {
         self.tokenizer.next_token();
 
         // Construct a union object.
-        let mut ty = new_union(
+        let mut ty = ty_union(
             None,
             self.struct_members(),
         );
@@ -1207,6 +1217,8 @@ impl Parser {
         let mut ty = self.declarator(basety.clone());
         ty.is_definition = !self.tokenizer.consume(";");
         let name = ty.name.as_ref().unwrap().literal.clone();
+
+        self.new_gvar(&ty, &token);
 
         if !ty.is_definition {
             return None;
