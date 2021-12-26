@@ -1,7 +1,9 @@
 use std::rc::Rc;
 use std::io::Write;
 use std::cell::RefCell;
-use crate::parser::{ Node, Obj };
+
+use crate::node::Node;
+use crate::obj::Obj;
 use crate::ty::{ Type, TypeKind };
 
 static ARGREG8: &'static [&str] = &[

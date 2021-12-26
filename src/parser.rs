@@ -3,6 +3,10 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use crate::tokenizer::{ Token, TokenKind, Tokenizer };
 use crate::ty::*;
+use crate::obj::Obj;
+use crate::env::{ Env, align_to, };
+use crate::scope::Scope;
+use crate::node::Node;
 
 static KW: &'static [&str] = &[
     "void", "char", "short", "int", "long", "struct", "union", "typedef"
@@ -14,304 +18,6 @@ const SHORT:    u16 = 1 << 4;
 const INT:      u16 = 1 << 6;
 const LONG:     u16 = 1 << 8;
 const OTHER:    u16 = 1 << 10;
-
-// Ast node type
-#[derive(Debug, Clone, PartialEq)]
-pub enum Node {
-    Add         { lhs: Box<Node>, rhs: Box<Node>, token: Token },   // +
-    Sub         { lhs: Box<Node>, rhs: Box<Node>, token: Token },   // -
-    Mul         { lhs: Box<Node>, rhs: Box<Node>, token: Token },   // *
-    Div         { lhs: Box<Node>, rhs: Box<Node>, token: Token },   // /
-    Neg         ( Box<Node>, Token ),                               // unary -
-    Eq          { lhs: Box<Node>, rhs: Box<Node>, token: Token },   // ==
-    Ne          { lhs: Box<Node>, rhs: Box<Node>, token: Token },   // !=
-    Lt          { lhs: Box<Node>, rhs: Box<Node>, token: Token },   // <
-    Le          { lhs: Box<Node>, rhs: Box<Node>, token: Token },   // <=
-    Assign      { lhs: Box<Node>, rhs: Box<Node>, token: Token },   // =
-    Comma       { lhs: Box<Node>, rhs: Box<Node>, token: Token },   // ,
-    Member      {
-        base:   Box<Node>,
-        member: Member,
-        token:  Token,
-    },
-    Addr        ( Box<Node>, Token ),                               // unary &
-    Deref       ( Box<Node>, Token ),                               // unary *
-    Return      ( Box<Node>, Token ),                               // "return"
-    If          {                                                   // "if"
-        cond:   Box<Node>,
-        then:   Box<Node>,
-        els:    Option<Box<Node>>,
-        token:  Token,
-    },
-    For         {                                                   // "for" of "while"
-        init:   Option<Box<Node>>,
-        cond:   Option<Box<Node>>,
-        inc:    Option<Box<Node>>,
-        body:   Box<Node>,
-        token:  Token,
-    },
-    Block       ( Vec<Box<Node>>, Token ),                          // { ... }
-    ExprStmt    ( Box<Node>, Token ),                               // Expression statement
-    StmtExpr    ( Box<Node>, Token ),                               // Statement Expression
-    Var         {                                                   // Variable
-        name: String,
-        ty: Type,
-        token: Token,
-        obj: Rc<RefCell<Obj>>
-    },
-    FuncCall    {                                                   // Function call
-        name: String,
-        args: Vec<Box<Node>>,
-        token: Token
-    },
-    Function    {                                                   // Function definition
-        name:   String,
-        params: Env,
-        body:   Vec<Box<Node>>,
-        locals: Rc<RefCell<Env>>,
-        ret_ty: Option<Type>,
-        token:  Token,
-    },
-    Program     {                                                   // Program
-        data: Rc<RefCell<Env>>,
-        text: Vec<Box<Node>>,
-        token:  Token,
-    },
-    Num         ( u64, Token ),                                     // Integer
-    Cast        {
-        expr:   Box<Node>,
-        ty:     Type,
-        token:  Token,
-    }
-}
-
-impl Node {
-    pub fn get_type(&self) -> Type {
-        match self {
-            Node::Add { lhs, .. }       =>  lhs.get_type(),
-            Node::Sub { lhs, rhs, .. }  =>  {
-                // ptr - ptr, which returns how many elements are between the two.
-                if lhs.get_type().is_ptr() && rhs.get_type().is_ptr() {
-                    new_int(None)
-                } else {
-                    lhs.get_type()
-                }
-            },
-            Node::Mul { lhs, .. }   |
-            Node::Div { lhs, .. }   =>  lhs.get_type(),
-            Node::Neg (expr, ..)    =>  expr.get_type(),
-            Node::Eq { .. }         |
-            Node::Ne { .. }         |
-            Node::Lt { .. }         |
-            Node::Le { .. }         =>   new_long(None),
-            Node::Assign { lhs, .. }    =>  {
-                let ty = lhs.get_type();
-                if ty.kind == TypeKind::Array {
-                    self.get_token().error("not an lvalue");
-                }
-
-                ty
-            }
-            Node::Comma { rhs, .. }     =>  rhs.get_type(),
-            Node::Member { member, ..}    =>  member.ty.clone(),
-            Node::Addr (expr, ..)       =>  {
-                let ty = expr.get_type();
-                match ty.kind {
-                    TypeKind::Array =>  {
-                        new_ptr(None, Some(Box::new(*ty.base.unwrap().clone())))
-                    },
-                    _   =>  new_ptr(None, Some(Box::new(ty.clone()))),
-                }
-                
-            },
-            Node::Deref (expr, ..)  =>  {
-                let ty = expr.get_type();
-                match ty.kind {
-                    TypeKind::Ptr       |
-                    TypeKind::Array     =>  *ty.base.unwrap(),
-                    TypeKind::Void      =>  self.get_token().error("deferencing a void pointer"),
-                    _   =>  self.get_token().error("invalid pointer dereference"),
-                }
-            },
-            Node::ExprStmt (expr, ..)   => expr.get_type(),
-            Node::StmtExpr (body, ..)   => {
-                if let Node::Block (stmts, ..)  = &**body {
-                    if let Some(expr)   = stmts.last() {
-                        return expr.get_type();
-                    }
-                }
-                self.get_token().error("statement expression returning void is not supported");
-            },
-            Node::Var { ty, .. }        =>  ty.clone(),
-            Node::FuncCall { .. }       |
-            Node::Num (..)              =>  new_long(None),
-            Node::Cast { ty, .. }       =>  ty.clone(),
-            _   =>  {
-                self.get_token().error("not an expression");
-            },
-        }
-    }
-
-    pub fn get_token(&self) -> &Token {
-        match self {
-            Node::Add       { token, .. }   |
-            Node::Sub       { token, .. }   |
-            Node::Mul       { token, .. }   |
-            Node::Div       { token, .. }   |
-            Node::Neg       ( .., token )   |
-            Node::Eq        { token, .. }   |
-            Node::Ne        { token, .. }   |
-            Node::Lt        { token, .. }   |
-            Node::Le        { token, .. }   |
-            Node::Assign    { token, .. }   |
-            Node::Comma     { token, .. }   |
-            Node::Member    { token, .. }   |
-            Node::Addr      ( .., token )   |
-            Node::Deref     ( .., token )   |
-            Node::Return    ( .., token )   |
-            Node::If        { token, .. }   |
-            Node::For       { token, .. }   |
-            Node::Block     ( .., token )   |
-            Node::ExprStmt  ( .., token )   |
-            Node::StmtExpr  ( .., token )   |
-            Node::Var       { token, .. }   |
-            Node::FuncCall  { token, .. }   |
-            Node::Function  { token, .. }   |
-            Node::Program   { token, .. }   |
-            Node::Num       ( .., token )   |
-            Node::Cast      { token, .. }   =>  token,
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct Obj {
-    pub offset:     u64,
-    pub ty:         Type,
-    pub is_local:   bool,
-    pub init_data:  Option<Vec<char>> // Global variable
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct Env {
-    pub parent:     Option<Rc<RefCell<Env>>>,
-    pub objs:       Vec<Rc<RefCell<Obj>>>,   // variables
-    pub stack_size: u64,
-}
-
-fn align_to(n: u64, align: u64) -> u64 {
-    (n + align - 1) / align * align
-}
-
-impl Env {
-
-    pub fn add_var(&mut self, ty: &Type, init_data: Option<Vec<char>>, token: &Token, is_local: bool, scope: &Scope) -> Rc<RefCell<Obj>> {
-        if scope.find_svar(&ty.name.as_ref().unwrap().literal) != None {
-            token.error(&format!("redefinition of '{}'", &ty.name.as_ref().unwrap().literal));
-        }
-
-        let mut offset = ty.size;
-        for obj in &mut self.objs {
-            obj.borrow_mut().offset += ty.size;
-            offset += obj.borrow().ty.size;
-        }
-        
-        let obj = Rc::new(RefCell::new( Obj {
-            offset: ty.size,
-            ty:     ty.clone(),
-            init_data, is_local
-        }));
-        self.objs.push(Rc::clone(&obj));
-        self.stack_size = align_to(offset, 16);
-
-        obj
-    }
-
-    // find variable from local and global
-    pub fn find_var(&self, name: &str) -> Option<Rc<RefCell<Obj>>> {
-        for obj in self.objs.iter().rev() {
-            if obj.borrow().ty.name.as_ref().unwrap().literal == name {
-                return Some(Rc::clone(obj))
-            }
-        }
-
-        if let Some(scope) = &self.parent {
-            return scope.borrow().find_var(name);
-        }
-
-        None
-    }
-    
-    // find variable from local
-    pub fn find_lvar(&self, name: &str) -> Option<Rc<RefCell<Obj>>> {
-        for obj in &self.objs {
-            if obj.borrow().ty.name.as_ref().unwrap().literal == name {
-                return Some(Rc::clone(obj))
-            }
-        }
-
-        None
-    }
-
-    pub fn add_parent(&mut self, parent: &Rc<RefCell<Env>>) {
-        self.parent = Some(Rc::clone(parent));
-    }
-}
-
-#[derive(Debug)]
-pub struct Scope {
-    parent:     Option<Rc<RefCell<Scope>>>,
-    objs:       Vec<Rc<RefCell<Obj>>>,
-    tags:       HashMap<String, Type>,      // struct tags or union tags
-    typedefs:   HashMap<String, Type>,      // typedef
-}
-
-impl Scope {
-    pub fn find_lvar(&self, name: &str) -> Option<Rc<RefCell<Obj>>> {
-        for obj in &self.objs {
-            if obj.borrow().ty.name.as_ref().unwrap().literal == name {
-                return Some(Rc::clone(obj));
-            }
-        }
-
-        if let Some(parent) = &self.parent {
-            return parent.borrow().find_lvar(name);
-        }
-
-        None
-    }
-
-    // find variable from scope
-    pub fn find_svar(&self, name: &str) -> Option<Rc<RefCell<Obj>>> {
-        for obj in &self.objs {
-            if obj.borrow().ty.name.as_ref().unwrap().literal == name {
-                return Some(Rc::clone(obj));
-            }
-        }
-
-        None
-    }
-
-    fn find_tag(&self, name: String) -> Option<Type> {
-        if let Some(tag) = self.tags.get(&name) {
-            Some(tag.clone())
-        } else {
-            None
-        }
-    }
-
-    fn find_typedef(&self, name: String) -> Option<Type> {
-        if let Some(typedef) = self.typedefs.get(&name) {
-            return Some(typedef.clone());
-        }
-
-        if let Some(parent) = &self.parent {
-            return parent.borrow().find_typedef(name);
-        }
-
-        None
-    }
-}
 
 #[derive(Debug)]
 struct VarAttr {
@@ -422,6 +128,7 @@ impl Parser {
             0,
             0,
         )));
+
         let obj = self.global.borrow_mut().add_var(
             &ty,
             Some(token.literal.chars().collect()),
@@ -745,7 +452,7 @@ impl Parser {
                 None
             };
 
-            let cond = if !self.tokenizer.cur_token().equal(";") {
+            let cond = if !self.tokenizer.equal(";") {
                 Some(Box::new(self.expr()))
             } else {
                 None
@@ -753,7 +460,7 @@ impl Parser {
 
             self.tokenizer.skip(";");
 
-            let inc = if !self.tokenizer.cur_token().equal(")") {
+            let inc = if !self.tokenizer.equal(")") {
                 Some(Box::new(self.expr()))
             } else {
                 None
@@ -774,7 +481,7 @@ impl Parser {
 
         if self.tokenizer.consume("while") {
             self.tokenizer.skip("(");
-            let cond = if !self.tokenizer.cur_token().equal(")") {
+            let cond = if !self.tokenizer.equal(")") {
                 Some(Box::new(self.expr()))
             } else {
                 None
@@ -1100,7 +807,7 @@ impl Parser {
     //         | str
     //         | num
     fn primary(&mut self) -> Node {
-        if self.tokenizer.cur_token().equal("(") &&
+        if self.tokenizer.equal("(") &&
         self.tokenizer.peek_token().equal("{") {
             let token = self.tokenizer.cur_token().clone();
             self.tokenizer.next_token();
@@ -1122,7 +829,7 @@ impl Parser {
         let token = self.tokenizer.cur_token().clone();
 
         if self.tokenizer.consume("sizeof") {
-            if self.tokenizer.cur_token().equal("(") &&
+            if self.tokenizer.equal("(") &&
                self.is_typename(&self.tokenizer.peek_token()) {
                 self.tokenizer.next_token();
                 let token = self.tokenizer.cur_token().clone();
@@ -1279,7 +986,7 @@ impl Parser {
     fn struct_members(&mut self) -> Vec<Box<Member>> {
         let mut members = Vec::new();
 
-        while !self.tokenizer.cur_token().equal("}") {
+        while !self.tokenizer.equal("}") {
             let basety = self.declspec(&mut None);
             let mut i = 0;
 
@@ -1312,7 +1019,7 @@ impl Parser {
             self.tokenizer.next_token();
         }
 
-        if tag != None && !self.tokenizer.cur_token().equal("{") {
+        if tag != None && !self.tokenizer.equal("{") {
             let ty = self.scope.borrow().find_tag(
                 tag.as_ref().unwrap().literal.clone()
             );
@@ -1355,14 +1062,14 @@ impl Parser {
     // union-decl = ident? "{" struct-members
     fn union_decl(&mut self) -> Type {
 
-        // Read a struct tag.
+        // Read a union tag.
         let mut tag = None;
         if self.tokenizer.cur_token().kind == TokenKind::Ident {
             tag = Some(self.tokenizer.cur_token().clone());
             self.tokenizer.next_token();
         }
 
-        if tag != None && !self.tokenizer.cur_token().equal("{") {
+        if tag != None && !self.tokenizer.equal("{") {
             let ty = self.scope.borrow().find_tag(
                 tag.as_ref().unwrap().literal.clone()
             );
@@ -1382,7 +1089,6 @@ impl Parser {
             self.struct_members(),
         );
 
-        // Assign offsets within the struct to member.
         for member in ty.members.iter_mut() {
             if ty.align < member.ty.align {
                 ty.align = member.ty.align;
@@ -1413,9 +1119,7 @@ impl Parser {
                 }
                 token.error("no such member");
             },
-            _   => {
-                token.error("no such member");
-            },
+            _   =>  token.error("no such member"),
         }
     }
 
@@ -1425,9 +1129,7 @@ impl Parser {
         match lhs.get_type().kind {
             TypeKind::Struct    |
             TypeKind::Union     => (),
-            _   =>{
-                lhs.get_token().error("not a struct nor union");
-            },
+            _   =>  lhs.get_token().error("not a struct nor union"),
         }
 
         let node = Node::Member {
@@ -1550,7 +1252,7 @@ impl Parser {
  
     // function = "*"* ident "(" func-params ")"
     fn is_function(&mut self) -> bool {
-        if self.tokenizer.cur_token().equal(";") {
+        if self.tokenizer.equal(";") {
             return false;
         }
 
@@ -1566,7 +1268,7 @@ impl Parser {
 
         self.tokenizer.next_token();
 
-        if !self.tokenizer.cur_token().equal("(") {
+        if !self.tokenizer.equal("(") {
             self.tokenizer.idx = idx;
             return false;
         }

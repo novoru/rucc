@@ -400,6 +400,14 @@ impl Tokenizer {
         return false;
     }
 
+    pub fn equal(&self, op: &str) -> bool {
+        if self.idx >= self.tokens.len() {  
+            return false;
+        }
+
+        self.tokens[self.idx].equal(op)
+    }
+
     pub fn cur_token(&self) -> &Token {
         let idx = if self.idx >= self.tokens.len() {
             self.tokens.len()-1
