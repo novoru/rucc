@@ -9,15 +9,17 @@ use crate::scope::Scope;
 use crate::node::Node;
 
 static KW: &'static [&str] = &[
-    "void", "char", "short", "int", "long", "struct", "union", "typedef"
+    "void", "_Bool", "char", "short", "int", "long",
+    "struct", "union", "typedef",
 ];
 
 const VOID:     u16 = 1 << 0;
-const CHAR:     u16 = 1 << 2;
-const SHORT:    u16 = 1 << 4;
-const INT:      u16 = 1 << 6;
-const LONG:     u16 = 1 << 8;
-const OTHER:    u16 = 1 << 10;
+const BOOL:     u16 = 1 << 2;
+const CHAR:     u16 = 1 << 4;
+const SHORT:    u16 = 1 << 6;
+const INT:      u16 = 1 << 8;
+const LONG:     u16 = 1 << 10;
+const OTHER:    u16 = 1 << 12;
 
 #[derive(Debug)]
 struct VarAttr {
@@ -155,7 +157,7 @@ impl Parser {
         token.literal.to_string()
     }
 
-    // declspec = ("void" | "char" | "shoht" | "int" | "long" | 
+    // declspec = ("void" | "_Bool" | "char" | "shoht" | "int" | "long" | 
     //          | struct-decl | union-decl | typedef-name)+
     fn declspec(&mut self, attr: &mut Option<VarAttr>) -> Type {
         let mut ty = ty_int(None);
@@ -201,6 +203,8 @@ impl Parser {
 
             if self.tokenizer.consume("void") {
                 counter += VOID;
+            } else if self.tokenizer.consume("_Bool") {
+                counter += BOOL;
             } else if self.tokenizer.consume("char") {
                 counter += CHAR;
             } else if self.tokenizer.consume("short") {
@@ -213,6 +217,7 @@ impl Parser {
 
             match counter {
                 _ if counter == VOID                =>  ty = ty_void(None),
+                _ if counter == BOOL                =>  ty = ty_bool(None),
                 _ if counter == CHAR                =>  ty = ty_char(None),
                 _ if counter == SHORT               =>  ty = ty_short(None),
                 _ if counter == SHORT + INT         =>  ty = ty_short(None),
@@ -380,7 +385,16 @@ impl Parser {
                 obj:    Rc::clone(&obj),
             };
 
-            let rhs = self.assign();
+            let mut rhs = self.assign();
+
+            if lhs.get_type().kind != TypeKind::Struct {
+                rhs = Node::Cast {
+                    expr:   Box::new(rhs.clone()),
+                    ty:     lhs.clone().get_type(),
+                    token:  rhs.get_token().clone(),
+                };
+            }
+
             let node = Node::Assign {
                 lhs: Box::new(lhs),
                 rhs: Box::new(rhs),
@@ -1143,7 +1157,7 @@ impl Parser {
         }
     }
 
-    fn struct_ref(&mut self, lhs: &Node) -> Node {
+    fn struct_ref(&mut self, lhs: &mut Node) -> Node {
         let token = self.tokenizer.cur_token();
 
         match lhs.get_type().kind {
@@ -1178,7 +1192,7 @@ impl Parser {
             }
 
             if self.tokenizer.consume(".") {
-                node = self.struct_ref(&node);
+                node = self.struct_ref(&mut node);
                 self.tokenizer.next_token();
                 continue;
             }
@@ -1189,7 +1203,7 @@ impl Parser {
                     Box::new(node),
                     token,
                 );
-                node = self.struct_ref(&node);
+                node = self.struct_ref(&mut node);
                 self.tokenizer.next_token();
                 continue;
             };

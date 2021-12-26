@@ -11,6 +11,7 @@ pub struct Member {
 #[derive(Debug, Clone, PartialEq)]
 pub enum TypeKind {
     Void,
+    Bool,
     Char,
     Short,
     Int,
@@ -47,6 +48,21 @@ pub struct Type {
 pub fn ty_void(name: Option<Rc<Token>>) -> Type {
     Type {
         kind:           TypeKind::Void,
+        name,
+        size:           1,
+        align:          1,
+        base:           None,
+        len:            0,
+        params:         Vec::new(),
+        ret_ty:         None,
+        is_definition:  false,
+        members:        Vec::new(),
+    }
+}
+
+pub fn ty_bool(name: Option<Rc<Token>>) -> Type {
+    Type {
+        kind:           TypeKind::Bool,
         name,
         size:           1,
         align:          1,
@@ -197,7 +213,7 @@ pub fn ty_union(name: Option<Rc<Token>>, members: Vec<Box<Member>>) -> Type {
 impl Type {
     pub fn is_num(&self) -> bool {
         matches!(self.kind,
-            TypeKind::Char | TypeKind::Short |
+            TypeKind::Bool | TypeKind::Char | TypeKind::Short |
             TypeKind::Int  | TypeKind::Long
         )
     }

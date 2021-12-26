@@ -134,12 +134,27 @@ impl CodeGenerator {
         if to.kind == TypeKind::Void {
             return;
         }
+
+        if to.kind == TypeKind::Bool {
+            self.cmp_zero(from);
+            writeln!(self.output, "  setne %al").unwrap();
+            writeln!(self.output, "  movzx %al, %rax").unwrap();
+            return;
+        }
     
         let t1 = get_type_id(from);
         let t2 = get_type_id(to);
         
         if CAST_TABLE[t1 as usize][t2 as usize].is_some() {
             writeln!(self.output, "  {}", CAST_TABLE[t1 as usize][t2 as usize].unwrap()).unwrap();
+        }
+    }
+
+    fn cmp_zero(&mut self, ty: &Type) {
+        if ty.is_num() && ty.size <= 4 {
+            writeln!(self.output, "  cmp $0, %eax").unwrap();
+        } else {
+            writeln!(self.output, "  cmp $0, %rax").unwrap();
         }
     }
 
