@@ -32,6 +32,7 @@ pub struct Parser {
     global:         Rc<RefCell<Env>>,
     pub local:      Rc<RefCell<Env>>,
     scope:          Rc<RefCell<Scope>>,
+    current_fn:     Option<Type>,
 }
 
 impl Parser {
@@ -58,6 +59,7 @@ impl Parser {
                 tags:       HashMap::new(),
                 typedefs:   HashMap::new(),
             })),
+            current_fn: None,
         }
     }
 
@@ -415,12 +417,19 @@ impl Parser {
     fn stmt(&mut self) -> Node {
         let token = self.tokenizer.cur_token().clone();
         if self.tokenizer.consume("return") {
-            let node = Node::Return(
-                Box::new(self.expr()),
+            let mut expr = self.expr();
+            self.tokenizer.skip(";");
+
+            expr = Node::Cast {
+                expr:   Box::new(expr),
+                ty:     (**self.current_fn.as_ref().unwrap().ret_ty.as_ref().unwrap()).clone(),
+                token:  token.clone(),
+            };
+
+            return Node::Return(
+                Box::new(expr),
                 token,
             );
-            self.tokenizer.skip(";");
-            return node;
         }
 
         if self.tokenizer.consume("if") {
@@ -782,7 +791,7 @@ impl Parser {
 
         let var = self.global.borrow().find_var(&name);
 
-        if let Some(func) = var {
+        if let Some(ref func) = var {
             if func.borrow().ty.kind != TypeKind::Function {
                 token.error("not a function");
             }
@@ -805,6 +814,7 @@ impl Parser {
         Node::FuncCall {
             name,
             args,
+            ret_ty: Some(*var.unwrap().borrow().ty.ret_ty.as_ref().unwrap().clone()),
             token,
         }
     }
@@ -1219,6 +1229,7 @@ impl Parser {
         let name = ty.name.as_ref().unwrap().literal.clone();
 
         self.new_gvar(&ty, &token);
+        self.current_fn = Some(ty.clone());
 
         if !ty.is_definition {
             return None;

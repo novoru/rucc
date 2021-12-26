@@ -2,7 +2,7 @@ use std::rc::Rc;
 use std::cell::RefCell;
 
 use crate::tokenizer::Token;
-use crate::ty::Type;
+use crate::ty::{ Type, TypeKind };
 use crate::obj::*;
 use crate::scope::Scope;
 
@@ -32,7 +32,11 @@ impl Env {
         let obj = if is_local {
             Rc::new(RefCell::new( new_lvar(ty.size, ty.clone())))
         } else {
-            Rc::new(RefCell::new( new_gvar(ty.size, ty.clone(), init_data)))
+            if ty.kind == TypeKind::Function {
+                Rc::new(RefCell::new( obj_function(ty.clone())))
+            } else {
+                Rc::new(RefCell::new( new_gvar(ty.size, ty.clone(), init_data)))
+            }
         };
 
         self.objs.push(Rc::clone(&obj));

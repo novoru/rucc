@@ -25,15 +25,24 @@ int sub_char(char a, char b, char c) {
     return a - b - c;
 }
 
-int sub_long(long a, long b, long c) {
-  return a - b - c;
-}
-
 int fib(int x) {
     if (x<=1)
         return 1;
     return fib(x-1) + fib(x-2);
 }
+
+int sub_long(long a, long b, long c) {
+  return a - b - c;
+}
+
+int sub_short(short a, short b, short c) {
+  return a - b - c;
+}
+
+int g1;
+
+int *g1_ptr() { return &g1; }
+char int_to_char(int x) { return x; }
 
 int main() {
     ASSERT(3, ret3());
@@ -51,6 +60,13 @@ int main() {
 
     ASSERT(1, sub_long(7, 3, 3));
 
+    ASSERT(1, sub_short(7, 3, 3));
+
+    g1 = 3;
+
+    ASSERT(3, *g1_ptr());
+    ASSERT(5, int_to_char(261));
+    
     printf("OK\n");
     return 0;
 }

@@ -53,6 +53,7 @@ pub enum Node {
     FuncCall    {                                                   // Function call
         name:   String,
         args:   Vec<Box<Node>>,
+        ret_ty: Option<Type>,
         token:  Token
     },
     Function    {                                                   // Function definition
@@ -117,12 +118,16 @@ impl Node {
             },
             Node::Deref (expr, ..)  =>  {
                 let ty = expr.get_type();
-                match ty.kind {
-                    TypeKind::Ptr       |
-                    TypeKind::Array     =>  *ty.base.unwrap(),
-                    TypeKind::Void      =>  self.get_token().error("deferencing a void pointer"),
-                    _   =>  self.get_token().error("invalid pointer dereference"),
+
+                if ty.kind == TypeKind::Void {
+                    self.get_token().error("deferencing a void pointer");
                 }
+
+                if ty.base.is_none() {
+                    self.get_token().error("invalid pointer dereference");
+                }
+
+                *ty.base.unwrap()
             },
             Node::ExprStmt (expr, ..)   => expr.get_type(),
             Node::StmtExpr (body, ..)   => {
@@ -134,7 +139,7 @@ impl Node {
                 self.get_token().error("statement expression returning void is not supported");
             },
             Node::Var { ty, .. }        =>  ty.clone(),
-            Node::FuncCall { .. }       |
+            Node::FuncCall { ret_ty, .. }   =>  ret_ty.as_ref().unwrap().clone(),
             Node::Num (..)              =>  ty_long(None),
             Node::Cast { ty, .. }       =>  ty.clone(),
             _   =>  self.get_token().error("not an expression"),
