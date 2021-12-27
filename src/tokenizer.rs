@@ -165,6 +165,12 @@ impl Tokenizer {
                 continue;
             }
 
+            // Character literal
+            if self.ch == '\'' {
+                self.read_char_literal();
+                continue;
+            }
+
             // Identifiers or Keywords
             if self.is_ident1(self.ch) {
                 let start = self.pos;
@@ -380,6 +386,40 @@ impl Tokenizer {
             start,
             &s,
             s.chars().count() as u64,
+            self.get_line(start),
+            self.get_lineno(start),
+            self.get_indent(start),
+        ));
+    }
+
+    fn read_char_literal(&mut self) {
+        self.read_char();
+        let start = self.pos;
+
+        if self.ch == '\0' {
+            self.error_at(self.pos, "unclosed char literal");
+        }
+
+        let c = if self.ch == '\\' {
+            self.read_char();
+            self.read_escape_char()
+        } else {
+            let ch = self.ch;
+            self.read_char();
+            ch
+        };
+
+
+        if self.ch != '\'' {
+            self.error_at(self.pos, "unclosed char literal");
+        }
+        
+        self.read_char();
+
+        self.tokens.push(Token::new_num(
+            c as u64,
+            start,
+            &c.to_string(),
             self.get_line(start),
             self.get_lineno(start),
             self.get_indent(start),
