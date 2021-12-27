@@ -816,12 +816,33 @@ impl Parser {
         self.tokenizer.next_token();
         self.tokenizer.next_token();
 
+        let ty = var.clone().unwrap().borrow().ty.clone();
+        let mut params = ty.params;
+
         let mut i = 0;
         while !self.tokenizer.consume(")") {
             if i > 0 {
                 self.tokenizer.skip(",");
             }
-            args.push(Box::new(self.assign()));
+
+            let mut arg = self.assign();
+
+            if params.len() > 0 {
+                let param = params.remove(0);
+
+                if param.kind == TypeKind::Struct ||
+                    param.kind == TypeKind::Union {
+                    arg.get_token().error("passing struct or union is not support yet");
+                }
+
+                arg = Node::Cast {
+                    expr:   Box::new(arg.clone()),
+                    ty:     param.clone(),
+                    token:  arg.get_token().clone(),
+                };
+            }
+
+            args.push(Box::new(arg));
             i += 1;
         }
 

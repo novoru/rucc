@@ -42,7 +42,7 @@ fn get_type_id(ty: &Type) -> TypeId {
 // The table for type casts
 static I32I8: &'static str  = "movsbl %al, %eax";
 static I32I16: &'static str = "movswl %ax, %eax";
-static I32I64: &'static str = "movsxd %eax, %rax";
+static I32I64: &'static str = "cltq";
 
 static CAST_TABLE: [[Option<&'static str>; 4]; 4] = [
   [None,        None,           None, Some(I32I64)],    // i8
@@ -98,7 +98,6 @@ impl CodeGenerator {
             _   =>  (),
         }
 
-
         match ty.size {
             1   =>  writeln!(self.output, "  movsbl (%rax), %eax").unwrap(),
             2   =>  writeln!(self.output, "  movswl (%rax), %eax").unwrap(),
@@ -145,8 +144,8 @@ impl CodeGenerator {
         let t1 = get_type_id(from);
         let t2 = get_type_id(to);
         
-        if CAST_TABLE[t1 as usize][t2 as usize].is_some() {
-            writeln!(self.output, "  {}", CAST_TABLE[t1 as usize][t2 as usize].unwrap()).unwrap();
+        if let Some(conv) = CAST_TABLE[t1 as usize][t2 as usize] {
+            writeln!(self.output, "  {}", conv).unwrap();
         }
     }
 
@@ -164,7 +163,7 @@ impl CodeGenerator {
         match node {
             Node::Var { obj, .. }  =>  {
                 if obj.borrow().is_local {
-                    writeln!(self.output, "  lea {}(%rbp), %rax", -(obj.borrow().offset as i32)).unwrap();
+                    writeln!(self.output, "  lea {}(%rbp), %rax", -(obj.borrow().offset as i64)).unwrap();
                 } else {
                     writeln!(self.output, "  lea {}(%rip), %rax", obj.borrow().ty.name.as_ref().unwrap().literal).unwrap();
                 }
@@ -377,7 +376,7 @@ impl CodeGenerator {
         }
     }
 
-    fn store_gp(&mut self, r: usize, offset: i32, sz: u64) {
+    fn store_gp(&mut self, r: usize, offset: i64, sz: u64) {
         match sz {
             1   =>  writeln!(self.output, "  mov {}, {}(%rbp)", ARGREG8[r], -offset).unwrap(),
             2   =>  writeln!(self.output, "  mov {}, {}(%rbp)", ARGREG16[r], -offset).unwrap(),
@@ -403,7 +402,7 @@ impl CodeGenerator {
                 
                 // Save passed-by-register arguments to the stack
                 for (i, param) in params.objs.iter().enumerate() {
-                    self.store_gp(i, param.borrow().offset as i32, param.borrow().ty.size);
+                    self.store_gp(i, param.borrow().offset as i64, param.borrow().ty.size);
                 }
 
                 // Emit code
