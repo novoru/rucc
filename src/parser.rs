@@ -657,18 +657,143 @@ impl Parser {
 
         node
     }
+    
+    // Convert `A op= B` to `tmp = &A, *tmp = *tmp op B`
+    // where tmp is a fresh pointer variable.
+    fn to_assign(&mut self, lhs: Node, rhs: Node, token: Token, op: &str) -> Node {
+        let var = Rc::new(RefCell::new(new_lvar(
+            0,
+            ty_ptr(None, Some(Box::new(lhs.get_type()))),
+        )));
 
-    // assign = equality ("=" assign)?
+        let expr1 = Node::Assign {
+            lhs:    Box::new(Node::Var{
+                name:   token.literal.clone(),
+                ty:     ty_ptr(None, Some(Box::new(lhs.get_type()))),
+                token:  token.clone(),
+                obj:    Rc::clone(&var),
+            }),
+            rhs:    Box::new(Node::Addr (
+                Box::new(lhs.clone()),
+                token.clone(),
+            )),
+            token:  token.clone(),
+        };
+
+        let expr2_rhs = if op == "+=" {
+            Box::new(self.new_add(
+                Node::Deref(
+                    Box::new(Node::Var{
+                        name:   token.literal.clone(),
+                        ty:     ty_ptr(None, Some(Box::new(lhs.get_type()))),
+                        token:  token.clone(),
+                        obj:    Rc::clone(&var),
+                    }),
+                    token.clone(),
+                ),
+                rhs,
+                token.clone(),
+            ))
+        } else if op == "-=" {
+            Box::new(self.new_sub(
+                Node::Deref(
+                    Box::new(Node::Var{
+                        name:   token.literal.clone(),
+                        ty:     ty_ptr(None, Some(Box::new(lhs.get_type()))),
+                        token:  token.clone(),
+                        obj:    Rc::clone(&var),
+                    }),
+                    token.clone(),
+                ),
+                rhs,
+                token.clone(),
+            ))
+        } else if op == "*=" {
+            Box::new(Node::Mul {
+                lhs:    Box::new(Node::Deref(
+                    Box::new(Node::Var{
+                        name:   token.literal.clone(),
+                        ty:     ty_ptr(None, Some(Box::new(lhs.get_type()))),
+                        token:  token.clone(),
+                        obj:    Rc::clone(&var),
+                    }),
+                    token.clone(),
+                )),
+                rhs:    Box::new(rhs),
+                token:  token.clone(),
+            })
+        } else if op == "/=" {
+            Box::new(Node::Div {
+                lhs:    Box::new(Node::Deref(
+                    Box::new(Node::Var{
+                        name:   token.literal.clone(),
+                        ty:     ty_ptr(None, Some(Box::new(lhs.get_type()))),
+                        token:  token.clone(),
+                        obj:    Rc::clone(&var),
+                    }),
+                    token.clone(),
+                )),
+                rhs:    Box::new(rhs),
+                token:  token.clone(),
+            })
+        } else {
+            panic!();
+        };
+
+        let expr2 = Node::Assign {
+            lhs:    Box::new(Node::Deref (
+                Box::new(Node::Var{
+                    name:   token.literal.clone(),
+                    ty:     ty_ptr(None, Some(Box::new(lhs.get_type()))),
+                    token:  token.clone(),
+                    obj:    Rc::clone(&var),
+                }),
+                token.clone(),
+            )),
+            rhs:    expr2_rhs,
+            token:  token.clone(),
+        };
+
+        return Node::Comma {
+            lhs:    Box::new(expr1),
+            rhs:    Box::new(expr2),
+            token,
+        };
+    } 
+
+    // assign    = equality (assign-op assign)?
+    // assign-op = "=" | "+=" | "-=" | "*=" | "/="
     fn assign(&mut self) -> Node {
         let token = self.tokenizer.cur_token().clone();
-        let mut node = self.equality();
+        let node = self.equality();
+        let op = self.tokenizer.cur_token().clone().literal;
 
         if self.tokenizer.consume("=") {
-            node = Node::Assign {
+            return Node::Assign {
                 lhs: Box::new(node),
                 rhs: Box::new(self.assign()),
                 token,
             };
+        }
+
+        if self.tokenizer.consume("+=") {
+            let rhs = self.assign();
+            return self.to_assign(node, rhs, token, &op);
+        }
+
+        if self.tokenizer.consume("-=") {
+            let rhs = self.assign();
+            return self.to_assign(node, rhs, token, &op);
+        }
+
+        if self.tokenizer.consume("*=") {
+            let rhs = self.assign();
+            return self.to_assign(node, rhs, token, &op);
+        }
+
+        if self.tokenizer.consume("/=") {
+            let rhs = self.assign();
+            return self.to_assign(node, rhs, token, &op);
         }
 
         node
