@@ -10,7 +10,7 @@ use crate::node::Node;
 
 static KW: &'static [&str] = &[
     "void", "_Bool", "char", "short", "int", "long",
-    "struct", "union", "typedef",
+    "struct", "union", "typedef", "enum",
 ];
 
 const VOID:     u16 = 1 << 0;
@@ -179,27 +179,25 @@ impl Parser {
                 .find_typedef(self.tokenizer.cur_token().literal.clone());
 
             let token = self.tokenizer.cur_token().clone();
-            if token.equal("struct") || token.equal("union") || ty2.is_some() {
+            if token.equal("struct") || token.equal("union") || token.equal("enum") | ty2.is_some() {
                 if counter > 0 {
                     break;
                 }
 
                 if self.tokenizer.consume("struct") {
                     ty = self.struct_decl();
-                    counter += OTHER;
-                    continue;
                 } else if self.tokenizer.consume("union") {
                     ty = self.union_decl();
-                    counter += OTHER;
-                    continue;
+                } else if self.tokenizer.consume("enum") {
+                    ty = self.enum_specifier();
                 } else if ty2.is_some() {
                     self.tokenizer.next_token();
                     ty = ty2.unwrap();
-                    counter += OTHER;
-                    continue;
                 }
+
+                counter += OTHER;
+                continue;
             }
-            
 
             if self.tokenizer.consume("void") {
                 counter += VOID;
@@ -263,12 +261,8 @@ impl Parser {
         }
 
         if self.tokenizer.consume("[") {
-            let token = self.tokenizer.cur_token().clone();
-            let sz = if let Some(val) = self.tokenizer.next_token().unwrap().val {
-                val
-            } else {
-                token.error("expected a number");
-            };
+            let sz = self.tokenizer.cur_token().get_number();
+            self.tokenizer.next_token();
             self.tokenizer.skip("]");
             ty = self.type_suffix(ty.clone());
 
@@ -349,6 +343,64 @@ impl Parser {
     fn typename(&mut self) -> Type {
         let ty = self.declspec(&mut None);
         return self.abstract_declarator(ty);
+    }
+
+    // enum-specifier = ident? "{" enum-list? "}"
+    //                | ident ("{" enum-list? "}")?
+    //
+    // enum-list      = ident ("=" num)? ("," ident ("=" num)?)*
+    fn enum_specifier(&mut self) -> Type {
+        let ty = ty_enum(None);
+
+        // Read a struct tag.
+        let mut tag = None;
+        if self.tokenizer.cur_token().kind == TokenKind::Ident {
+            tag = Some(self.tokenizer.cur_token().clone());
+            self.tokenizer.next_token();
+        }
+
+        if tag != None && !self.tokenizer.equal("{") {
+            let ty = self.scope.borrow().find_tag(
+                tag.as_ref().unwrap().literal.clone()
+            );
+            if ty == None {
+                if let Some(token) = tag {
+                    token.error("unknown enum type");
+                }
+            }
+            return ty.unwrap();
+        }
+        
+        self.tokenizer.skip("{");
+
+        // Read an enum-list.
+        let mut i = 0;
+        let mut val = 0;
+        while !self.tokenizer.consume("}") {
+            if i > 0 {
+                self.tokenizer.skip(",");
+            }
+
+            let name = self.tokenizer.cur_token().clone();
+            self.tokenizer.next_token();
+
+            if self.tokenizer.consume("=") {
+                val = self.tokenizer.cur_token().get_number();
+                self.tokenizer.next_token();
+            }
+
+            let constant = enum_const(name, val);
+            self.push_scope(Rc::new(RefCell::new(constant)));
+
+            val += 1;
+            i += 1;
+        }
+
+        if tag.is_some() {
+            self.push_tag_scope(&tag.unwrap().literal, ty.clone());
+        }
+
+        ty
     }
 
     // declaration = declspec (declarator ("=" expr)? ("," declarator ("=" expr)?)*)? ";"
@@ -921,12 +973,19 @@ impl Parser {
                 token.error("undefined variable");
             };
 
-            return Node::Var{
-                name,
-                ty:     obj.borrow().ty.clone(),
-                token,
-                obj:    Rc::clone(&obj),
-            };
+            if obj.borrow().ty.kind == TypeKind::Enum {
+                return Node::Num(
+                    obj.borrow().enum_val,
+                    token, 
+                );
+            } else {
+                return Node::Var{
+                    name,
+                    ty:     obj.borrow().ty.clone(),
+                    token,
+                    obj:    Rc::clone(&obj),
+                };
+            }
         }
 
         if token.kind == TokenKind::Str {
@@ -945,7 +1004,7 @@ impl Parser {
 
         if token.kind == TokenKind::Num {
             let node = Node::Num(
-                token.val.unwrap(),
+                token.get_number(),
                 token,
             );
             self.tokenizer.next_token();
@@ -1066,7 +1125,6 @@ impl Parser {
 
     // struct-decl = ident? "{" struct-members
     fn struct_decl(&mut self) -> Type {
-
         // Read a struct tag.
         let mut tag = None;
         if self.tokenizer.cur_token().kind == TokenKind::Ident {

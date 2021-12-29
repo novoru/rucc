@@ -5,6 +5,7 @@ use crate::ty::*;
 static KWDS: &'static [&str] = &[
     "return", "if", "for", "while", "int", "sizeof", "char",
     "struct", "union", "short", "long", "void", "typedef", "_Bool",
+    "enum",
 ];
 
 static KW: &'static [&str] = &[
@@ -86,6 +87,14 @@ impl Token {
 
     pub fn equal(&self, op: &str) -> bool {
         self.literal == op
+    }
+
+    pub fn get_number(&self) -> u64 {
+        if let Some(val) = self.val {
+            val
+        } else {
+            self.error("expected a number");
+        }
     }
 
     pub fn error(&self, s: &str) -> ! {
@@ -408,7 +417,6 @@ impl Tokenizer {
             self.read_char();
             ch
         };
-
 
         if self.ch != '\'' {
             self.error_at(self.pos, "unclosed char literal");

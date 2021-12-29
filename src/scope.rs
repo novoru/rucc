@@ -9,7 +9,7 @@ use crate::obj::Obj;
 pub struct Scope {
     pub parent:     Option<Rc<RefCell<Scope>>>,
     pub objs:       Vec<Rc<RefCell<Obj>>>,
-    pub tags:       HashMap<String, Type>,      // struct tags or union tags
+    pub tags:       HashMap<String, Type>,      // struct tags, union or enum tags
     pub typedefs:   HashMap<String, Type>,      // typedef
 }
 

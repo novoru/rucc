@@ -1,7 +1,8 @@
 use std::rc::Rc;
 use std::cell::RefCell;
 
-use crate::ty::Type;
+use crate::tokenizer::Token;
+use crate::ty::*;
 use crate::env::Env;
 use crate::node::Node;
 
@@ -23,6 +24,9 @@ pub struct Obj {
     pub params: Option<Env>,
     pub body:   Vec<Box<Node>>,
     pub locals: Option<Rc<RefCell<Env>>>,
+
+    // Enum constant
+    pub enum_val:   u64,
 }
 
 pub fn new_lvar(offset: u64, ty: Type) -> Obj {
@@ -36,6 +40,7 @@ pub fn new_lvar(offset: u64, ty: Type) -> Obj {
         params:         None,
         body:           Vec::new(),
         locals:         None,
+        enum_val:       0,
     }
 }
 
@@ -51,6 +56,7 @@ pub fn new_gvar(offset: u64, ty: Type, init_data: Option<Vec<char>>) -> Obj {
         params:         None,
         body:           Vec::new(),
         locals:         None,
+        enum_val:       0,
     }
 }
 
@@ -65,5 +71,21 @@ pub fn obj_function(ty: Type) -> Obj {
         params:         None,
         body:           Vec::new(),
         locals:         None,
+        enum_val:       0,
+    }
+}
+
+pub fn enum_const(name: Token, val: u64) -> Obj {
+    Obj {
+        offset:         0,
+        ty:             ty_enum(Some(Rc::new(name))),
+        is_local:       true,
+        is_function:    true,
+        is_definition:  false,
+        init_data:      None,
+        params:         None,
+        body:           Vec::new(),
+        locals:         None,
+        enum_val:       val,
     }
 }

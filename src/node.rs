@@ -80,22 +80,22 @@ pub enum Node {
 impl Node {
     pub fn get_type(&self) -> Type {
         match self {
-            Node::Add { lhs, .. }       =>  lhs.get_type(),
-            Node::Sub { lhs, rhs, .. }  =>  {
+            Node::Add { lhs, rhs, .. }      => get_common_type(&lhs.get_type(), &rhs.get_type()),
+            Node::Sub { lhs, rhs, .. }      =>  {
                 // ptr - ptr, which returns how many elements are between the two.
                 if lhs.get_type().is_ptr() && rhs.get_type().is_ptr() {
                     ty_int(None)
                 } else {
-                    lhs.get_type()
+                    get_common_type(&lhs.get_type(), &rhs.get_type())
                 }
             },
-            Node::Mul { lhs, .. }   |
-            Node::Div { lhs, .. }   =>  lhs.get_type(),
-            Node::Neg (expr, ..)    =>  expr.get_type(),
-            Node::Eq { .. }         |
-            Node::Ne { .. }         |
-            Node::Lt { .. }         |
-            Node::Le { .. }         =>   ty_long(None),
+            Node::Mul { lhs, rhs, .. }  |
+            Node::Div { lhs, rhs, .. }  =>  get_common_type(&lhs.get_type(), &rhs.get_type()),
+            Node::Neg (..)              =>  ty_long(None),
+            Node::Eq { .. }             |
+            Node::Ne { .. }             |
+            Node::Lt { .. }             |
+            Node::Le { .. }             =>  ty_int(None),
             Node::Assign { lhs, .. }    =>  {
                 let ty = lhs.get_type();
                 if ty.kind == TypeKind::Array {
@@ -104,9 +104,9 @@ impl Node {
 
                 ty
             }
-            Node::Comma { rhs, .. }     =>  rhs.get_type(),
-            Node::Member { member, ..}    =>  member.ty.clone(),
-            Node::Addr (expr, ..)       =>  {
+            Node::Comma { rhs, .. }         =>  rhs.get_type(),
+            Node::Member { member, ..}      =>  member.ty.clone(),
+            Node::Addr (expr, ..)           =>  {
                 let ty = expr.get_type();
                 match ty.kind {
                     TypeKind::Array =>  {
@@ -129,18 +129,24 @@ impl Node {
 
                 *ty.base.unwrap()
             },
-            Node::ExprStmt (expr, ..)   => expr.get_type(),
-            Node::StmtExpr (body, ..)   => {
+            Node::ExprStmt (expr, ..)           => expr.get_type(),
+            Node::StmtExpr (body, ..)           => {
                 if let Node::Block (stmts, ..)  = &**body {
-                    if let Some(expr)   = stmts.last() {
+                    if let Some(expr)           = stmts.last() {
                         return expr.get_type();
                     }
                 }
                 self.get_token().error("statement expression returning void is not supported");
             },
-            Node::Var { ty, .. }        =>  ty.clone(),
+            Node::Var { ty, .. }            =>  ty.clone(),
             Node::FuncCall { ret_ty, .. }   =>  ret_ty.as_ref().unwrap().clone(),
-            Node::Num (..)              =>  ty_long(None),
+            Node::Num ( val, ..)            =>  {
+                if *val == *val as u32 as u64 {
+                    return ty_int(None);
+                } else {
+                    return ty_long(None);
+                }
+            },
             Node::Cast { ty, .. }       =>  ty.clone(),
             _   =>  self.get_token().error("not an expression"),
         }

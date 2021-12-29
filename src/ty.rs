@@ -16,6 +16,7 @@ pub enum TypeKind {
     Short,
     Int,
     Long,
+    Enum,
     Ptr,
     Function,
     Array,
@@ -41,7 +42,7 @@ pub struct Type {
     pub ret_ty: Option<Box<Type>>,
     pub is_definition:  bool,
 
-    // Struct or Union
+    // Struct or Union or Enum
     pub members:    Vec<Box<Member>>,
 }
 
@@ -108,6 +109,21 @@ pub fn ty_short(name: Option<Rc<Token>>) -> Type {
 pub fn ty_int(name: Option<Rc<Token>>) -> Type {
     Type {
         kind:           TypeKind::Int,
+        name,
+        size:           4,
+        align:          4,
+        base:           None,
+        len:            0,
+        params:         Vec::new(),
+        ret_ty:         None,
+        is_definition:  false,
+        members:        Vec::new(),
+    }
+}
+
+pub fn ty_enum(name: Option<Rc<Token>>) -> Type {
+    Type {
+        kind:           TypeKind::Enum,
         name,
         size:           4,
         align:          4,
@@ -214,7 +230,7 @@ impl Type {
     pub fn is_num(&self) -> bool {
         matches!(self.kind,
             TypeKind::Bool | TypeKind::Char | TypeKind::Short |
-            TypeKind::Int  | TypeKind::Long
+            TypeKind::Int  | TypeKind::Long | TypeKind::Enum
         )
     }
 
@@ -223,4 +239,21 @@ impl Type {
             TypeKind::Array | TypeKind::Ptr
         )
     }
+}
+
+pub fn get_common_type(ty1: &Type, ty2: &Type) -> Type {
+    if let Some(base) = &ty1.base {
+        let name = if let Some(token) = &base.name {
+            Some(Rc::clone(&token))
+        } else {
+            None
+        };
+        return ty_ptr(name, Some(base.clone()));
+    }
+
+    if ty1.size == 8 || ty2.size == 8 {
+        return ty_long(None);
+    }
+
+    ty_int(None)
 }
