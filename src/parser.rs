@@ -657,7 +657,7 @@ impl Parser {
 
         node
     }
-    
+
     // Convert `A op= B` to `tmp = &A, *tmp = *tmp op B`
     // where tmp is a fresh pointer variable.
     fn to_assign(&mut self, lhs: Node, rhs: Node, token: Token, op: &str) -> Node {
@@ -680,7 +680,7 @@ impl Parser {
             token:  token.clone(),
         };
 
-        let expr2_rhs = if op == "+=" {
+        let expr2_rhs = if op == "+=" || op == "++" {
             Box::new(self.new_add(
                 Node::Deref(
                     Box::new(Node::Var{
@@ -694,7 +694,7 @@ impl Parser {
                 rhs,
                 token.clone(),
             ))
-        } else if op == "-=" {
+        } else if op == "-=" || op == "--" {
             Box::new(self.new_sub(
                 Node::Deref(
                     Box::new(Node::Var{
@@ -1218,6 +1218,7 @@ impl Parser {
     }
 
     // unary = ("+" | "-" | "*" | "&") cast
+    //       | ("++" | "--") unary
     //       | postfix
     fn unary(&mut self) -> Node {
         let token = self.tokenizer.cur_token().clone();
@@ -1244,6 +1245,20 @@ impl Parser {
                 Box::new(self.cast()),
                 token,
             );
+        }
+
+        let op = self.tokenizer.cur_token().clone().literal;
+
+        if self.tokenizer.consume("++") {
+            let lhs = self.unary();
+            let rhs = Node::Num(1, token.clone());
+            return self.to_assign(lhs, rhs, token, &op);
+        }
+        
+        if self.tokenizer.consume("--") {
+            let lhs = self.unary();
+            let rhs = Node::Num(1, token.clone());
+            return self.to_assign(lhs, rhs, token, &op);
         }
 
         self.postfix()
