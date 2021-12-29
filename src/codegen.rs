@@ -389,8 +389,13 @@ impl CodeGenerator {
     fn gen_func(&mut self, func: &Node) {
         self.cur_func = Some(Rc::new(func.clone()));
         match func {
-            Node::Function { name, params, body, locals, .. }  =>  {
-                writeln!(self.output, "  .globl {}", name).unwrap();
+            Node::Function { name, params, body, locals, is_static, .. }  =>  {
+
+                if *is_static {
+                    writeln!(self.output, "  .local {}", name).unwrap();
+                } else {
+                    writeln!(self.output, "  .globl {}", name).unwrap();
+                }
                 writeln!(self.output, "  .text").unwrap();
                 writeln!(self.output, "{}:", name).unwrap();
                 

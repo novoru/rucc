@@ -57,12 +57,13 @@ pub enum Node {
         token:  Token
     },
     Function    {                                                   // Function definition
-        name:   String,
-        params: Env,
-        body:   Vec<Box<Node>>,
-        locals: Rc<RefCell<Env>>,
-        ret_ty: Option<Type>,
-        token:  Token,
+        name:       String,
+        params:     Env,
+        body:       Vec<Box<Node>>,
+        locals:     Rc<RefCell<Env>>,
+        ret_ty:     Option<Type>,
+        is_static:  bool,
+        token:      Token,
     },
     Program     {                                                   // Program
         data:   Rc<RefCell<Env>>,

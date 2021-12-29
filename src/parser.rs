@@ -10,7 +10,7 @@ use crate::node::Node;
 
 static KW: &'static [&str] = &[
     "void", "_Bool", "char", "short", "int", "long",
-    "struct", "union", "typedef", "enum",
+    "struct", "union", "typedef", "enum", "static",
 ];
 
 const VOID:     u16 = 1 << 0;
@@ -25,6 +25,7 @@ const OTHER:    u16 = 1 << 12;
 struct VarAttr {
     token:      Option<Token>,
     is_typedef: bool,
+    is_static:  bool,
 }
 
 #[derive(Debug)]
@@ -158,20 +159,36 @@ impl Parser {
     }
 
     // declspec = ("void" | "_Bool" | "char" | "shoht" | "int" | "long" | 
-    //          | struct-decl | union-decl | typedef-name)+
+    //          | "typedef" | "static"
+    //          | struct-decl | union-decl | typedef-name
+    //          | enum-specifier)+
     fn declspec(&mut self, attr: &mut Option<VarAttr>) -> Type {
         let mut ty = ty_int(None);
         let mut counter = 0;
 
         while self.is_typename(&self.tokenizer.cur_token()) {
-            if self.tokenizer.consume("typedef") {
+            // Handle storage class specifiers.
+            let specifier = self.tokenizer.cur_token();
+            if specifier.equal("typedef") || specifier.equal("static") {
                 if let Some(ref mut attr) = attr {
                     attr.token = Some(self.tokenizer.cur_token().clone());
-                    attr.is_typedef = true;
+
+                    if specifier.equal("typedef") {
+                        attr.is_typedef = true;
+                    } else {
+                        attr.is_static = true;
+                    }
+    
+                    if attr.is_typedef && attr.is_static {
+                        specifier.error("typedef and static may not be used together");
+                    }
                 } else {
                     self.tokenizer.cur_token()
                         .error("storage class specifier is not allowed in this context");
                 }
+                
+                self.tokenizer.next_token();
+
                 continue;
             }
 
@@ -595,6 +612,7 @@ impl Parser {
                 let mut attr = Some(VarAttr {
                     token:      Some(token),
                     is_typedef: false,
+                    is_static:  false,
                 });
                 let basety = self.declspec(&mut attr);
 
@@ -1308,7 +1326,7 @@ impl Parser {
     }
 
     // function-definition = declspec declarator compound-stmt
-    fn function(&mut self, basety: Type) -> Option<Node> {
+    fn function(&mut self, basety: Type, attr: &mut Option<VarAttr>) -> Option<Node> {
         let locals = Rc::new(RefCell::new( Env {
             parent:     Some(Rc::clone(&self.global)),
             objs:       Vec::new(),
@@ -1345,8 +1363,9 @@ impl Parser {
             name,
             params,
             body,
-            locals: Rc::clone(&self.local),
-            ret_ty: Some(ty),
+            locals:     Rc::clone(&self.local),
+            ret_ty:     Some(ty),
+            is_static:  attr.as_ref().unwrap().is_static,
             token,
         })
     }
@@ -1423,11 +1442,12 @@ impl Parser {
             let mut attr = Some(VarAttr {
                 token:      None,
                 is_typedef: false,
+                is_static:  false,
             });
             let basety = self.declspec(&mut attr);
 
             if self.is_function() {
-                if let Some(func) = self.function(basety.clone()) {
+                if let Some(func) = self.function(basety.clone(), &mut attr) {
                     prog.push(Box::new(func));
                 }
                 continue;
