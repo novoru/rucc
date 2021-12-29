@@ -538,8 +538,16 @@ impl Parser {
         if self.tokenizer.consume("for") {
             self.tokenizer.skip("(");
 
+            self.enter_scope();
+
             let init = if !self.tokenizer.consume(";") {
-                Some(Box::new(self.expr_stmt()))
+                let token = self.tokenizer.cur_token();
+                if self.is_typename(&token) {
+                    let basety = self.declspec(&mut None);
+                    Some(Box::new(self.declaration(basety)))
+                } else {
+                    Some(Box::new(self.expr_stmt()))
+                }
             } else {
                 None
             };
@@ -561,6 +569,8 @@ impl Parser {
             self.tokenizer.skip(")");
 
             let body = Box::new(self.stmt());
+
+            self.leave_scope();
 
             return Node::For {
                 init,
