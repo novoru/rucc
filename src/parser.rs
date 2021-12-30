@@ -737,7 +737,7 @@ impl Parser {
                 token:  token.clone(),
             })
         } else {
-            panic!();
+            unreachable!();
         };
 
         let expr2 = Node::Assign {
@@ -1422,6 +1422,33 @@ impl Parser {
         node        
     }
 
+    // Convert A++ to `(typeof A)((A += 1) - 1)`
+    fn new_inc_dec(&mut self, node: Node, plus: bool) -> Node {
+        let token = self.tokenizer.cur_token().clone();
+        let addend = if plus {
+            Node::Num(1, token.clone())
+        } else {
+            Node::Neg(Box::new(Node::Num(1, token.clone())), token.clone())
+        };
+
+        let a = self.to_assign(
+            node.clone(),
+            addend.clone(),
+            token.clone(),
+            "++",
+        );
+
+        return Node::Cast {
+            expr:   Box::new(self.new_add(
+                a,
+                Node::Neg(Box::new(addend), token.clone()),
+                token.clone(),
+            )),
+            ty:     node.get_type(),
+            token
+        };
+    }
+
     // postfix = primary ("[" expr "]" | "." ident | "->" ident)*
     fn postfix(&mut self) -> Node {
         let mut node = self.primary();
@@ -1454,6 +1481,16 @@ impl Parser {
                 self.tokenizer.next_token();
                 continue;
             };
+
+            if self.tokenizer.consume("++") {
+                node = self.new_inc_dec(node, true);
+                continue;
+            }
+
+            if self.tokenizer.consume("--") {
+                node = self.new_inc_dec(node, false);
+                continue;
+            }
 
             return node;
         }
