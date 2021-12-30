@@ -164,7 +164,7 @@ impl Tokenizer {
 
             // Numeric literal
             if self.ch.is_digit(10) {
-                self.read_num();
+                self.read_int_literal();
                 continue;
             }
 
@@ -278,14 +278,66 @@ impl Tokenizer {
         self.rpos += 1;
     }
 
-    fn read_num(&mut self) {
-        let start = self.pos;
-        while self.ch.is_digit(10) {
+    fn read_hex(&mut self) -> u64 {
+        let mut n = 0;
+        while self.ch.is_digit(16) {
+            n = (n << 4) + (self.ch.to_digit(16).unwrap() as u64);
             self.read_char();
         }
+
+        n
+    }
+
+    fn read_bin(&mut self) -> u64 {
+        let mut n = 0;
+        while self.ch.is_digit(2) {
+            n = (n << 1) + (self.ch.to_digit(2).unwrap() as u64);
+            self.read_char();
+        }
+
+        n
+    }
+
+    fn read_oct(&mut self) -> u64 {
+        let mut n = 0;
+        while self.ch.is_digit(8) {
+            n = (n << 3) + (self.ch.to_digit(8).unwrap() as u64);
+            self.read_char();
+        }
+
+        n
+    }
+
+    fn read_int_literal(&mut self) {
+        let start = self.pos;
+
+        let val = if self.input[self.pos..]
+                    .to_ascii_lowercase().starts_with("0x") &&
+                    self.input[self.pos..].chars()
+                    .skip(2).next().unwrap().is_digit(16) {
+            self.read_char();
+            self.read_char();
+            self.read_hex()
+        } else if self.input[self.pos..]
+                    .to_ascii_lowercase().starts_with("0b") &&
+                    self.input[self.pos..].chars()
+                    .skip(2).next().unwrap().is_digit(2){
+            self.read_char();
+            self.read_char();
+            self.read_bin()
+        } else if self.input[self.pos..].starts_with("0") {
+            self.read_char();
+            self.read_oct()
+        }  else {
+            while self.ch.is_digit(10) {
+                self.read_char();
+            }
+            self.input[start..self.pos].parse::<u64>().unwrap()
+        };
+
         let literal = &self.input[start..self.pos];
         self.tokens.push(Token::new_num(
-            literal.parse::<u64>().unwrap(),
+            val,
             start,
             literal,
             self.get_line(start),
