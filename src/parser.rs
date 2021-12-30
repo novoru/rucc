@@ -817,11 +817,11 @@ impl Parser {
         };
     } 
 
-    // assign    = bitor (assign-op assign)?
+    // assign    = logor (assign-op assign)?
     // assign-op = "=" | "+=" | "-=" | "*=" | "/=" | "%=" | "&=" | "|=" | "^="
     fn assign(&mut self) -> Node {
         let token = self.tokenizer.cur_token().clone();
-        let node = self.bitor();
+        let node = self.logor();
         let op = self.tokenizer.cur_token().clone().literal;
 
         if self.tokenizer.consume("=") {
@@ -860,6 +860,44 @@ impl Parser {
         self.tokenizer.skip(";");
 
         node
+    }
+
+    // logor = logand ("||" logand)*
+    fn logor(&mut self) -> Node {
+        let mut node = self.logand();
+
+        loop {
+            let token = self.tokenizer.cur_token().clone();
+            if self.tokenizer.consume("||") {
+                node = Node::LogOr {
+                    lhs: Box::new(node),
+                    rhs: Box::new(self.logand()),
+                    token,
+                };
+                continue;
+            }
+            
+            return node;
+        }
+    }
+
+    // logand = bitor ("&&" bitor)*
+    fn logand(&mut self) -> Node {
+        let mut node = self.bitor();
+
+        loop {
+            let token = self.tokenizer.cur_token().clone();
+            if self.tokenizer.consume("&&") {
+                node = Node::LogAnd {
+                    lhs: Box::new(node),
+                    rhs: Box::new(self.bitor()),
+                    token,
+                };
+                continue;
+            }
+            
+            return node;
+        }
     }
 
     // bitor = bitxor ("|" bitxor)*

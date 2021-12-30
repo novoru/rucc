@@ -345,6 +345,34 @@ impl CodeGenerator {
                 self.gen_expr(expr);
                 self.cast(&expr.get_type(), &node.get_type());
             },
+            Node::LogAnd { lhs, rhs, ..}    =>  {
+                let c = self.count();
+                self.gen_expr(lhs);
+                writeln!(self.output, "  cmp $0, %rax").unwrap();
+                writeln!(self.output, "  je .L.false.{}", c).unwrap();
+                self.gen_expr(rhs);
+                writeln!(self.output, "  cmp $0, %rax").unwrap();
+                writeln!(self.output, "  je .L.false.{}", c).unwrap();
+                writeln!(self.output, "  mov $1, %rax").unwrap();
+                writeln!(self.output, "  jmp .L.end.{}", c).unwrap();
+                writeln!(self.output, ".L.false.{}:", c).unwrap();
+                writeln!(self.output, "  mov $0, %rax").unwrap();
+                writeln!(self.output, ".L.end.{}:", c).unwrap();
+            },
+            Node::LogOr { lhs, rhs, ..}    =>  {
+                let c = self.count();
+                self.gen_expr(lhs);
+                writeln!(self.output, "  cmp $0, %rax").unwrap();
+                writeln!(self.output, "  jne .L.true.{}", c).unwrap();
+                self.gen_expr(rhs);
+                writeln!(self.output, "  cmp $0, %rax").unwrap();
+                writeln!(self.output, "  jne .L.true.{}", c).unwrap();
+                writeln!(self.output, "  mov $0, %rax").unwrap();
+                writeln!(self.output, "  jmp .L.end.{}", c).unwrap();
+                writeln!(self.output, ".L.true.{}:", c).unwrap();
+                writeln!(self.output, "  mov $1, %rax").unwrap();
+                writeln!(self.output, ".L.end.{}:", c).unwrap();
+            },
             Node::FuncCall { name, args, .. } =>  {
                 for arg in args {
                     self.gen_expr(arg);

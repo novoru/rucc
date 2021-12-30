@@ -33,6 +33,8 @@ pub enum Node {
     Deref       ( Box<Node>, Token ),                               // unary *
     Not         ( Box<Node>, Token ),                               // !
     BitNot      ( Box<Node>, Token ),                               // ~
+    LogAnd      { lhs: Box<Node>, rhs: Box<Node>, token: Token },   // &&
+    LogOr       { lhs: Box<Node>, rhs: Box<Node>, token: Token },   // ||
     Return      ( Box<Node>, Token ),                               // "return"
     If          {                                                   // "if"
         cond:   Box<Node>,
@@ -140,7 +142,9 @@ impl Node {
 
                 *ty.base.unwrap()
             },
-            Node::Not (..)                      =>  ty_int(None),
+            Node::Not (..)                      |
+            Node::LogAnd {..}                   |
+            Node::LogOr  {..}                   =>  ty_int(None),
             Node::BitNot (expr, ..)             |
             Node::ExprStmt (expr, ..)           => expr.get_type(),
             Node::StmtExpr (body, ..)           => {
@@ -187,6 +191,8 @@ impl Node {
             Node::Deref     ( .., token )   |
             Node::Not       ( .., token )   |
             Node::BitNot    ( .., token )   |
+            Node::LogAnd    { token, .. }   |
+            Node::LogOr     { token, .. }   |
             Node::Return    ( .., token )   |
             Node::If        { token, .. }   |
             Node::For       { token, .. }   |
