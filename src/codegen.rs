@@ -224,6 +224,20 @@ impl CodeGenerator {
                 }
                 writeln!(self.output, "  idiv {}", di).unwrap();
             },
+            Node::Mod { lhs, rhs, .. }  =>  {
+                let (_, di) = reg_name(lhs);
+                self.gen_expr(rhs);
+                self.push();
+                self.gen_expr(lhs);
+                self.pop("%rdi");
+                if lhs.get_type().size == 8 {
+                    writeln!(self.output, "  cqo").unwrap();
+                } else {
+                    writeln!(self.output, "  cdq").unwrap();
+                }
+                writeln!(self.output, "  idiv {}", di).unwrap();
+                writeln!(self.output, "  mov %rdx, %rax").unwrap();
+            },
             Node::Neg (expr, ..)    =>   {
                 self.gen_expr(expr);
                 writeln!(self.output, "  neg %rax").unwrap();

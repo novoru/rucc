@@ -13,6 +13,7 @@ pub enum Node {
     Sub         { lhs: Box<Node>, rhs: Box<Node>, token: Token },   // -
     Mul         { lhs: Box<Node>, rhs: Box<Node>, token: Token },   // *
     Div         { lhs: Box<Node>, rhs: Box<Node>, token: Token },   // /
+    Mod         { lhs: Box<Node>, rhs: Box<Node>, token: Token },   // %
     Neg         ( Box<Node>, Token ),                               // unary -
     Eq          { lhs: Box<Node>, rhs: Box<Node>, token: Token },   // ==
     Ne          { lhs: Box<Node>, rhs: Box<Node>, token: Token },   // !=
@@ -93,7 +94,8 @@ impl Node {
                 }
             },
             Node::Mul { lhs, rhs, .. }  |
-            Node::Div { lhs, rhs, .. }  =>  get_common_type(&lhs.get_type(), &rhs.get_type()),
+            Node::Div { lhs, rhs, .. }  |
+            Node::Mod { lhs, rhs, .. }  =>  get_common_type(&lhs.get_type(), &rhs.get_type()),
             Node::Neg (..)              =>  ty_long(None),
             Node::Eq { .. }             |
             Node::Ne { .. }             |
@@ -163,6 +165,7 @@ impl Node {
             Node::Sub       { token, .. }   |
             Node::Mul       { token, .. }   |
             Node::Div       { token, .. }   |
+            Node::Mod       { token, .. }   |
             Node::Neg       ( .., token )   |
             Node::Eq        { token, .. }   |
             Node::Ne        { token, .. }   |

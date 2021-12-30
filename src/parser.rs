@@ -736,6 +736,20 @@ impl Parser {
                 rhs:    Box::new(rhs),
                 token:  token.clone(),
             })
+        } else if op == "%=" {
+            Box::new(Node::Mod {
+                lhs:    Box::new(Node::Deref(
+                    Box::new(Node::Var{
+                        name:   token.literal.clone(),
+                        ty:     ty_ptr(None, Some(Box::new(lhs.get_type()))),
+                        token:  token.clone(),
+                        obj:    Rc::clone(&var),
+                    }),
+                    token.clone(),
+                )),
+                rhs:    Box::new(rhs),
+                token:  token.clone(),
+            })
         } else {
             unreachable!();
         };
@@ -762,7 +776,7 @@ impl Parser {
     } 
 
     // assign    = equality (assign-op assign)?
-    // assign-op = "=" | "+=" | "-=" | "*=" | "/="
+    // assign-op = "=" | "+=" | "-=" | "*=" | "/=" | "%="
     fn assign(&mut self) -> Node {
         let token = self.tokenizer.cur_token().clone();
         let node = self.equality();
@@ -776,22 +790,9 @@ impl Parser {
             };
         }
 
-        if self.tokenizer.consume("+=") {
-            let rhs = self.assign();
-            return self.to_assign(node, rhs, token, &op);
-        }
-
-        if self.tokenizer.consume("-=") {
-            let rhs = self.assign();
-            return self.to_assign(node, rhs, token, &op);
-        }
-
-        if self.tokenizer.consume("*=") {
-            let rhs = self.assign();
-            return self.to_assign(node, rhs, token, &op);
-        }
-
-        if self.tokenizer.consume("/=") {
+        if  self.tokenizer.consume("+=") || self.tokenizer.consume("-=") ||
+            self.tokenizer.consume("*=") || self.tokenizer.consume("/=") ||
+            self.tokenizer.consume("%=") {
             let rhs = self.assign();
             return self.to_assign(node, rhs, token, &op);
         }
@@ -1167,7 +1168,7 @@ impl Parser {
         token.error("expected an expression");
     }
 
-    // mul = cast ("*" cast | "/" cast)*
+    // mul = cast ("*" cast | "/" cast | "%" cast)*
     fn mul(&mut self) -> Node {
         let mut node = self.cast();
         
@@ -1184,6 +1185,15 @@ impl Parser {
             
             if self.tokenizer.consume("/") {
                 node = Node::Div {
+                    lhs: Box::new(node),
+                    rhs: Box::new(self.cast()),
+                    token,
+                };
+                continue;
+            }
+            
+            if self.tokenizer.consume("%") {
+                node = Node::Mod {
                     lhs: Box::new(node),
                     rhs: Box::new(self.cast()),
                     token,
