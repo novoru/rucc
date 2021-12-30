@@ -257,9 +257,14 @@ impl Parser {
                 self.tokenizer.skip(",");
             }
 
-            let basety = self.declspec(&mut None);
-            let ty = self.declarator(basety);
-            params.push(ty);
+            let mut ty2 = self.declspec(&mut None);
+            ty2 = self.declarator(ty2.clone());
+
+            if ty2.kind == TypeKind::Array {
+                ty2 = ty_ptr(ty2.name, ty2.base);
+            }
+
+            params.push(ty2);
         }
 
         ty_function (
