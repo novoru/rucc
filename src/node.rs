@@ -14,6 +14,9 @@ pub enum Node {
     Mul         { lhs: Box<Node>, rhs: Box<Node>, token: Token },   // *
     Div         { lhs: Box<Node>, rhs: Box<Node>, token: Token },   // /
     Mod         { lhs: Box<Node>, rhs: Box<Node>, token: Token },   // %
+    BitAnd      { lhs: Box<Node>, rhs: Box<Node>, token: Token },   // &
+    BitOr       { lhs: Box<Node>, rhs: Box<Node>, token: Token },   // |
+    BitXor      { lhs: Box<Node>, rhs: Box<Node>, token: Token },   // ^
     Neg         ( Box<Node>, Token ),                               // unary -
     Eq          { lhs: Box<Node>, rhs: Box<Node>, token: Token },   // ==
     Ne          { lhs: Box<Node>, rhs: Box<Node>, token: Token },   // !=
@@ -93,9 +96,12 @@ impl Node {
                     get_common_type(&lhs.get_type(), &rhs.get_type())
                 }
             },
-            Node::Mul { lhs, rhs, .. }  |
-            Node::Div { lhs, rhs, .. }  |
-            Node::Mod { lhs, rhs, .. }  =>  get_common_type(&lhs.get_type(), &rhs.get_type()),
+            Node::Mul { lhs, rhs, .. }      |
+            Node::Div { lhs, rhs, .. }      |
+            Node::Mod { lhs, rhs, .. }      |
+            Node::BitAnd { lhs, rhs, .. }   |
+            Node::BitOr  { lhs, rhs, .. }   |
+            Node::BitXor { lhs, rhs, .. }   =>  get_common_type(&lhs.get_type(), &rhs.get_type()),
             Node::Neg (..)              =>  ty_long(None),
             Node::Eq { .. }             |
             Node::Ne { .. }             |
@@ -166,6 +172,9 @@ impl Node {
             Node::Mul       { token, .. }   |
             Node::Div       { token, .. }   |
             Node::Mod       { token, .. }   |
+            Node::BitAnd    { token, .. }   |
+            Node::BitOr     { token, .. }   |
+            Node::BitXor    { token, .. }   |
             Node::Neg       ( .., token )   |
             Node::Eq        { token, .. }   |
             Node::Ne        { token, .. }   |

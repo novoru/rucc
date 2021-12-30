@@ -242,6 +242,27 @@ impl CodeGenerator {
                 self.gen_expr(expr);
                 writeln!(self.output, "  neg %rax").unwrap();
             },
+            Node::BitAnd { lhs, rhs, .. }  =>  {
+                self.gen_expr(rhs);
+                self.push();
+                self.gen_expr(lhs);
+                self.pop("%rdi");
+                writeln!(self.output, "  and %rdi, %rax").unwrap();
+            },
+            Node::BitOr { lhs, rhs, .. }  =>  {
+                self.gen_expr(rhs);
+                self.push();
+                self.gen_expr(lhs);
+                self.pop("%rdi");
+                writeln!(self.output, "  or %rdi, %rax").unwrap();
+            },
+            Node::BitXor { lhs, rhs, .. }  =>  {
+                self.gen_expr(rhs);
+                self.push();
+                self.gen_expr(lhs);
+                self.pop("%rdi");
+                writeln!(self.output, "  xor %rdi, %rax").unwrap();
+            },
             Node::Eq { lhs, rhs, .. }   =>  {
                 let (ax, di) = reg_name(lhs);
                 self.gen_expr(rhs);

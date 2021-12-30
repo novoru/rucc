@@ -750,6 +750,48 @@ impl Parser {
                 rhs:    Box::new(rhs),
                 token:  token.clone(),
             })
+        } else if op == "&=" {
+            Box::new(Node::BitAnd {
+                lhs:    Box::new(Node::Deref(
+                    Box::new(Node::Var{
+                        name:   token.literal.clone(),
+                        ty:     ty_ptr(None, Some(Box::new(lhs.get_type()))),
+                        token:  token.clone(),
+                        obj:    Rc::clone(&var),
+                    }),
+                    token.clone(),
+                )),
+                rhs:    Box::new(rhs),
+                token:  token.clone(),
+            })
+        } else if op == "|=" {
+            Box::new(Node::BitOr {
+                lhs:    Box::new(Node::Deref(
+                    Box::new(Node::Var{
+                        name:   token.literal.clone(),
+                        ty:     ty_ptr(None, Some(Box::new(lhs.get_type()))),
+                        token:  token.clone(),
+                        obj:    Rc::clone(&var),
+                    }),
+                    token.clone(),
+                )),
+                rhs:    Box::new(rhs),
+                token:  token.clone(),
+            })
+        } else if op == "^=" {
+            Box::new(Node::BitXor {
+                lhs:    Box::new(Node::Deref(
+                    Box::new(Node::Var{
+                        name:   token.literal.clone(),
+                        ty:     ty_ptr(None, Some(Box::new(lhs.get_type()))),
+                        token:  token.clone(),
+                        obj:    Rc::clone(&var),
+                    }),
+                    token.clone(),
+                )),
+                rhs:    Box::new(rhs),
+                token:  token.clone(),
+            })
         } else {
             unreachable!();
         };
@@ -775,11 +817,11 @@ impl Parser {
         };
     } 
 
-    // assign    = equality (assign-op assign)?
-    // assign-op = "=" | "+=" | "-=" | "*=" | "/=" | "%="
+    // assign    = bitor (assign-op assign)?
+    // assign-op = "=" | "+=" | "-=" | "*=" | "/=" | "%=" | "&=" | "|=" | "^="
     fn assign(&mut self) -> Node {
         let token = self.tokenizer.cur_token().clone();
-        let node = self.equality();
+        let node = self.bitor();
         let op = self.tokenizer.cur_token().clone().literal;
 
         if self.tokenizer.consume("=") {
@@ -792,7 +834,8 @@ impl Parser {
 
         if  self.tokenizer.consume("+=") || self.tokenizer.consume("-=") ||
             self.tokenizer.consume("*=") || self.tokenizer.consume("/=") ||
-            self.tokenizer.consume("%=") {
+            self.tokenizer.consume("%=") || self.tokenizer.consume("&=") || 
+            self.tokenizer.consume("|=") || self.tokenizer.consume("^=") {
             let rhs = self.assign();
             return self.to_assign(node, rhs, token, &op);
         }
@@ -817,6 +860,63 @@ impl Parser {
         self.tokenizer.skip(";");
 
         node
+    }
+
+    // bitor = bitxor ("|" bitxor)*
+    fn bitor(&mut self) -> Node {
+        let mut node = self.bitxor();
+
+        loop {
+            let token = self.tokenizer.cur_token().clone();
+            if self.tokenizer.consume("|") {
+                node = Node::BitOr {
+                    lhs: Box::new(node),
+                    rhs: Box::new(self.bitxor()),
+                    token,
+                };
+                continue;
+            }
+            
+            return node;
+        }
+    }
+
+    // bitxor = bitand ("^" bitand)*
+    fn bitxor(&mut self) -> Node {
+        let mut node = self.bitand();
+        
+        loop {
+            let token = self.tokenizer.cur_token().clone();
+            if self.tokenizer.consume("^") {
+                node = Node::BitXor {
+                    lhs: Box::new(node),
+                    rhs: Box::new(self.bitand()),
+                    token,
+                };
+                continue;
+            }
+            
+            return node;
+        }
+    }
+
+    // bitand = equality ("&" equality)*
+    fn bitand(&mut self) -> Node {
+        let mut node = self.equality();
+        
+        loop {
+            let token = self.tokenizer.cur_token().clone();
+            if self.tokenizer.consume("&") {
+                node = Node::BitAnd {
+                    lhs: Box::new(node),
+                    rhs: Box::new(self.equality()),
+                    token,
+                };
+                continue;
+            }
+            
+            return node;
+        }
     }
 
     // equality = relational ("==" relational | "!=" relational)*
