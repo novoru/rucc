@@ -269,8 +269,35 @@ impl Parser {
         )
     }
 
+    // array-dimensions = num? "]" type-suffix
+    fn array_dimensions(&mut self, mut ty: Type) -> Type {
+        if self.tokenizer.consume("]") {
+            ty = self.type_suffix(ty);
+            return ty_array(
+                ty.clone().name,
+                Some(Box::new(ty.clone())),
+                0,
+                0,
+                ty.align,
+            );
+        }
+
+        let sz = self.tokenizer.cur_token().get_number();
+        self.tokenizer.next_token();
+        self.tokenizer.skip("]");
+        ty = self.type_suffix(ty.clone());
+        
+        return ty_array (
+            ty.clone().name,
+            Some(Box::new(ty.clone())),
+            ty.clone().size*sz,
+            sz,
+            ty.align,
+        );
+    }
+
     // type-suffix = "(" func-pramas
-    //             | "[" num "]" type-suffix
+    //             | "[" array-dimenstions
     //             | ε
     fn type_suffix(&mut self, mut ty: Type) -> Type {
         if self.tokenizer.consume("(") {
@@ -278,18 +305,7 @@ impl Parser {
         }
 
         if self.tokenizer.consume("[") {
-            let sz = self.tokenizer.cur_token().get_number();
-            self.tokenizer.next_token();
-            self.tokenizer.skip("]");
-            ty = self.type_suffix(ty.clone());
-
-            return ty_array (
-                ty.clone().name,
-                Some(Box::new(ty.clone())),
-                ty.clone().size*sz,
-                sz,
-                ty.align,
-            );
+            return self.array_dimensions(ty);
         }
 
         ty
@@ -435,6 +451,10 @@ impl Parser {
 
             let tok_lhs = self.tokenizer.cur_token().clone();
             let ty = self.declarator(basety.clone());
+
+            if ty.kind == TypeKind::Array && ty.size == 0 {
+                ty.name.unwrap().error("variable has incomplete type");
+            }
 
             if ty.kind == TypeKind::Void {
                 ty.name.unwrap().error("variable declared void");
