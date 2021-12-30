@@ -1217,7 +1217,7 @@ impl Parser {
         return self.unary();
     }
 
-    // unary = ("+" | "-" | "*" | "&") cast
+    // unary = ("+" | "-" | "*" | "&" | "!" | "~") cast
     //       | ("++" | "--") unary
     //       | postfix
     fn unary(&mut self) -> Node {
@@ -1242,6 +1242,20 @@ impl Parser {
         
         if self.tokenizer.consume("*") {
             return Node::Deref(
+                Box::new(self.cast()),
+                token,
+            );
+        }
+
+        if self.tokenizer.consume("!") {
+            return Node::Not(
+                Box::new(self.cast()),
+                token,
+            );
+        }
+
+        if self.tokenizer.consume("~") {
+            return Node::BitNot(
                 Box::new(self.cast()),
                 token,
             );

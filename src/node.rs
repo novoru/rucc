@@ -27,6 +27,8 @@ pub enum Node {
     },
     Addr        ( Box<Node>, Token ),                               // unary &
     Deref       ( Box<Node>, Token ),                               // unary *
+    Not         ( Box<Node>, Token ),                               // !
+    BitNot      ( Box<Node>, Token ),                               // ~
     Return      ( Box<Node>, Token ),                               // "return"
     If          {                                                   // "if"
         cond:   Box<Node>,
@@ -130,6 +132,8 @@ impl Node {
 
                 *ty.base.unwrap()
             },
+            Node::Not (..)                      =>  ty_int(None),
+            Node::BitNot (expr, ..)             |
             Node::ExprStmt (expr, ..)           => expr.get_type(),
             Node::StmtExpr (body, ..)           => {
                 if let Node::Block (stmts, ..)  = &**body {
@@ -169,6 +173,8 @@ impl Node {
             Node::Member    { token, .. }   |
             Node::Addr      ( .., token )   |
             Node::Deref     ( .., token )   |
+            Node::Not       ( .., token )   |
+            Node::BitNot    ( .., token )   |
             Node::Return    ( .., token )   |
             Node::If        { token, .. }   |
             Node::For       { token, .. }   |

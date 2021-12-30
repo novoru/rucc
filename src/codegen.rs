@@ -272,6 +272,16 @@ impl CodeGenerator {
                 self.gen_expr(expr);
                 self.load(&node.get_type());
             },
+            Node::Not (expr, ..)    =>  {
+                self.gen_expr(expr);
+                writeln!(self.output, "  cmp $0, %rax").unwrap();
+                writeln!(self.output, "  sete %al").unwrap();
+                writeln!(self.output, "  movzx %al, %rax").unwrap();
+            }
+            Node::BitNot (expr, ..) =>  {
+                self.gen_expr(expr);
+                writeln!(self.output, "  not %rax").unwrap();
+            },
             Node::Addr (expr, ..)   =>  {
                 self.gen_addr(expr);
             },
