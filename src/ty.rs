@@ -1,9 +1,11 @@
 use std::rc::Rc;
+use std::cell::RefCell;
 use crate::tokenizer::Token;
+use crate::env::align_to;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Member {
-    pub ty:     Type,
+    pub ty:     Rc<RefCell<Type>>,
     pub name:   String,
     pub offset: u64,
 }
@@ -32,18 +34,19 @@ pub struct Type {
     pub align:  u64,
 
     // Ptr or Array
-    pub base:   Option<Box<Type>>,
+    pub base:   Option<Rc<RefCell<Type>>>,
 
     // Array
     pub len:    u64,
     
     // Function
-    pub params: Vec<Type>,
-    pub ret_ty: Option<Box<Type>>,
+    pub params: Vec<Rc<RefCell<Type>>>,
+    pub ret_ty: Option<Rc<RefCell<Type>>>,
     pub is_definition:  bool,
 
     // Struct or Union or Enum
     pub members:    Vec<Box<Member>>,
+    pub is_incomplete:  bool,
 }
 
 pub fn ty_void(name: Option<Rc<Token>>) -> Type {
@@ -58,6 +61,7 @@ pub fn ty_void(name: Option<Rc<Token>>) -> Type {
         ret_ty:         None,
         is_definition:  false,
         members:        Vec::new(),
+        is_incomplete:  false,
     }
 }
 
@@ -73,6 +77,7 @@ pub fn ty_bool(name: Option<Rc<Token>>) -> Type {
         ret_ty:         None,
         is_definition:  false,
         members:        Vec::new(),
+        is_incomplete:  false,
     }
 }
 
@@ -88,6 +93,7 @@ pub fn ty_char(name: Option<Rc<Token>>) -> Type {
         ret_ty:         None,
         is_definition:  false,
         members:        Vec::new(),
+        is_incomplete:  false,
     }
 }
 
@@ -103,6 +109,7 @@ pub fn ty_short(name: Option<Rc<Token>>) -> Type {
         ret_ty:         None,
         is_definition:  false,
         members:        Vec::new(),
+        is_incomplete:  false,
     }
 }
 
@@ -118,6 +125,7 @@ pub fn ty_int(name: Option<Rc<Token>>) -> Type {
         ret_ty:         None,
         is_definition:  false,
         members:        Vec::new(),
+        is_incomplete:  false,
     }
 }
 
@@ -133,6 +141,7 @@ pub fn ty_enum(name: Option<Rc<Token>>) -> Type {
         ret_ty:         None,
         is_definition:  false,
         members:        Vec::new(),
+        is_incomplete:  false,
     }
 }
 
@@ -148,10 +157,11 @@ pub fn ty_long(name: Option<Rc<Token>>) -> Type {
         ret_ty:         None,
         is_definition:  false,
         members:        Vec::new(),
+        is_incomplete:  false,
     }
 }
 
-pub fn ty_ptr(name: Option<Rc<Token>>, base: Option<Box<Type>>) -> Type {
+pub fn ty_ptr(name: Option<Rc<Token>>, base: Option<Rc<RefCell<Type>>>) -> Type {
     Type {
         kind:           TypeKind::Ptr,
         name,
@@ -163,10 +173,11 @@ pub fn ty_ptr(name: Option<Rc<Token>>, base: Option<Box<Type>>) -> Type {
         ret_ty:         None,
         is_definition:  false,
         members:        Vec::new(),
+        is_incomplete:  false,
     }
 }
 
-pub fn ty_function(name: Option<Rc<Token>>, params: Vec<Type>, ret_ty: Option<Box<Type>>) -> Type {
+pub fn ty_function(name: Option<Rc<Token>>, params: Vec<Rc<RefCell<Type>>>, ret_ty: Option<Rc<RefCell<Type>>>) -> Type {
     Type {
         kind:           TypeKind::Function,
         name,
@@ -178,10 +189,11 @@ pub fn ty_function(name: Option<Rc<Token>>, params: Vec<Type>, ret_ty: Option<Bo
         ret_ty,
         is_definition:  false,
         members:        Vec::new(),
+        is_incomplete:  false,
     }
 }
 
-pub fn ty_array(name: Option<Rc<Token>>, base: Option<Box<Type>>, size: u64, len: u64, align: u64) -> Type {
+pub fn ty_array(name: Option<Rc<Token>>, base: Option<Rc<RefCell<Type>>>, size: u64, len: u64, align: u64) -> Type {
     Type {
         kind:           TypeKind::Array,
         name,
@@ -193,6 +205,7 @@ pub fn ty_array(name: Option<Rc<Token>>, base: Option<Box<Type>>, size: u64, len
         ret_ty:         None,
         is_definition:  false,
         members:        Vec::new(),
+        is_incomplete:  false,
     }
 }
 
@@ -208,6 +221,7 @@ pub fn ty_struct(name: Option<Rc<Token>>, members: Vec<Box<Member>>) -> Type {
         ret_ty:         None,
         is_definition:  false,
         members,
+        is_incomplete:  false,
     }
 }
 
@@ -223,6 +237,7 @@ pub fn ty_union(name: Option<Rc<Token>>, members: Vec<Box<Member>>) -> Type {
         ret_ty:         None,
         is_definition:  false,
         members,
+        is_incomplete:  false,
     }
 }
 
@@ -239,21 +254,36 @@ impl Type {
             TypeKind::Array | TypeKind::Ptr
         )
     }
+
+    pub fn assign_offsets(&mut self) {
+        let mut offset = 0;
+        for member in self.members.iter_mut() {
+            offset = align_to(offset, member.ty.borrow().align);
+            member.offset = offset;
+            offset += member.ty.borrow().size;
+
+            if self.align < member.ty.borrow().align {
+                self.align = member.ty.borrow().align;
+            }
+        }
+
+        self.size = align_to(offset, self.align);
+    }
 }
 
-pub fn get_common_type(ty1: &Type, ty2: &Type) -> Type {
-    if let Some(base) = &ty1.base {
-        let name = if let Some(token) = &base.name {
+pub fn get_common_type(ty1: Rc<RefCell<Type>>, ty2: Rc<RefCell<Type>>) -> Rc<RefCell<Type>> {
+    if let Some(base) = &ty1.borrow().base {
+        let name = if let Some(token) = &base.borrow().name {
             Some(Rc::clone(&token))
         } else {
             None
         };
-        return ty_ptr(name, Some(base.clone()));
+        return Rc::new(RefCell::new(ty_ptr(name, Some(base.clone()))));
     }
 
-    if ty1.size == 8 || ty2.size == 8 {
-        return ty_long(None);
+    if ty1.borrow().size == 8 || ty2.borrow().size == 8 {
+        return Rc::new(RefCell::new(ty_long(None)));
     }
 
-    ty_int(None)
+    Rc::new(RefCell::new(ty_int(None)))
 }

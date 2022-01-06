@@ -18,24 +18,26 @@ pub fn align_to(n: u64, align: u64) -> u64 {
 }
 
 impl Env {
-    pub fn add_var(&mut self, ty: &Type, init_data: Option<Vec<char>>, token: &Token, is_local: bool, scope: &Scope) -> Rc<RefCell<Obj>> {
-        if scope.find_svar(&ty.name.as_ref().unwrap().literal).is_some() {
-            token.error(&format!("redefinition of '{}'", &ty.name.as_ref().unwrap().literal));
+    pub fn add_var(&mut self, ty: Rc<RefCell<Type>>, init_data: Option<Vec<char>>, token: &Token, is_local: bool, scope: &Scope) -> Rc<RefCell<Obj>> {
+        if scope.find_svar(&token.literal).is_some() {
+            token.error(&format!(
+                "redefinition of '{}'", &token.literal
+            ));
         }
 
-        let mut offset = ty.size;
+        let mut offset = ty.borrow().size;
         for obj in &mut self.objs {
-            obj.borrow_mut().offset += ty.size;
-            offset += obj.borrow().ty.size;
+            obj.borrow_mut().offset += ty.borrow().size;
+            offset += obj.borrow().ty.borrow().size;
         }
 
         let obj = if is_local {
-            Rc::new(RefCell::new( new_lvar(ty.size, ty.clone())))
+            Rc::new(RefCell::new(new_lvar(ty.borrow().size, token.literal.clone(), ty.clone())))
         } else {
-            if ty.kind == TypeKind::Function {
-                Rc::new(RefCell::new( obj_function(ty.clone())))
+            if ty.borrow().kind == TypeKind::Function {
+                Rc::new(RefCell::new( obj_function(token.literal.clone(), ty.clone())))
             } else {
-                Rc::new(RefCell::new( new_gvar(ty.size, ty.clone(), init_data)))
+                Rc::new(RefCell::new( new_gvar(ty.borrow().size, token.literal.clone(), ty.clone(), init_data)))
             }
         };
 
@@ -48,7 +50,7 @@ impl Env {
     // find variable from local and global
     pub fn find_var(&self, name: &str) -> Option<Rc<RefCell<Obj>>> {
         for obj in self.objs.iter().rev() {
-            if obj.borrow().ty.name.as_ref().unwrap().literal == name {
+            if obj.borrow().name == name {
                 return Some(Rc::clone(obj))
             }
         }
@@ -63,7 +65,7 @@ impl Env {
     // find variable from local
     pub fn find_lvar(&self, name: &str) -> Option<Rc<RefCell<Obj>>> {
         for obj in &self.objs {
-            if obj.borrow().ty.name.as_ref().unwrap().literal == name {
+            if obj.borrow().name == name {
                 return Some(Rc::clone(obj))
             }
         }

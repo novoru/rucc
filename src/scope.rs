@@ -9,14 +9,14 @@ use crate::obj::Obj;
 pub struct Scope {
     pub parent:     Option<Rc<RefCell<Scope>>>,
     pub objs:       Vec<Rc<RefCell<Obj>>>,
-    pub tags:       HashMap<String, Type>,      // struct tags, union or enum tags
-    pub typedefs:   HashMap<String, Type>,      // typedef
+    pub tags:       HashMap<String, Rc<RefCell<Type>>>, // struct tags, union or enum tags
+    pub typedefs:   HashMap<String, Rc<RefCell<Type>>>,              // typedef
 }
 
 impl Scope {
     pub fn find_lvar(&self, name: &str) -> Option<Rc<RefCell<Obj>>> {
         for obj in &self.objs {
-            if obj.borrow().ty.name.as_ref().unwrap().literal == name {
+            if obj.borrow().name == name {
                 return Some(Rc::clone(obj));
             }
         }
@@ -31,7 +31,7 @@ impl Scope {
     // find variable from scope
     pub fn find_svar(&self, name: &str) -> Option<Rc<RefCell<Obj>>> {
         for obj in &self.objs {
-            if obj.borrow().ty.name.as_ref().unwrap().literal == name {
+            if obj.borrow().name == name {
                 return Some(Rc::clone(obj));
             }
         }
@@ -39,7 +39,7 @@ impl Scope {
         None
     }
 
-    pub fn find_tag(&self, name: String) -> Option<Type> {
+    pub fn find_tag(&self, name: String) -> Option<Rc<RefCell<Type>>> {
         if let Some(tag) = self.tags.get(&name) {
             Some(tag.clone())
         } else {
@@ -47,7 +47,7 @@ impl Scope {
         }
     }
 
-    pub fn find_typedef(&self, name: String) -> Option<Type> {
+    pub fn find_typedef(&self, name: String) -> Option<Rc<RefCell<Type>>> {
         if let Some(typedef) = self.typedefs.get(&name) {
             return Some(typedef.clone());
         }

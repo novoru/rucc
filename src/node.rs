@@ -54,14 +54,14 @@ pub enum Node {
     StmtExpr    ( Box<Node>, Token ),                               // Statement Expression
     Var         {                                                   // Variable
         name:   String,
-        ty:     Type,
+        ty:     Rc<RefCell<Type>>,
         token:  Token,
         obj:    Rc<RefCell<Obj>>
     },
     FuncCall    {                                                   // Function call
         name:   String,
         args:   Vec<Box<Node>>,
-        ret_ty: Option<Type>,
+        ret_ty: Option<Rc<RefCell<Type>>>,
         token:  Token
     },
     Function    {                                                   // Function definition
@@ -69,7 +69,7 @@ pub enum Node {
         params:     Env,
         body:       Vec<Box<Node>>,
         locals:     Rc<RefCell<Env>>,
-        ret_ty:     Option<Type>,
+        ret_ty:     Option<Rc<RefCell<Type>>>,
         is_static:  bool,
         token:      Token,
     },
@@ -81,21 +81,21 @@ pub enum Node {
     Num         ( u64, Token ),                                     // Integer
     Cast        {
         expr:   Box<Node>,
-        ty:     Type,
+        ty:     Rc<RefCell<Type>>,
         token:  Token,
     }
 }
 
 impl Node {
-    pub fn get_type(&self) -> Type {
+    pub fn get_type(&self) -> Rc<RefCell<Type>> {
         match self {
-            Node::Add { lhs, rhs, .. }      => get_common_type(&lhs.get_type(), &rhs.get_type()),
+            Node::Add { lhs, rhs, .. }      => get_common_type(lhs.get_type(), rhs.get_type()),
             Node::Sub { lhs, rhs, .. }      =>  {
                 // ptr - ptr, which returns how many elements are between the two.
-                if lhs.get_type().is_ptr() && rhs.get_type().is_ptr() {
-                    ty_int(None)
+                if lhs.get_type().borrow().is_ptr() && rhs.get_type().borrow().is_ptr() {
+                    Rc::new(RefCell::new(ty_int(None)))
                 } else {
-                    get_common_type(&lhs.get_type(), &rhs.get_type())
+                    get_common_type(lhs.get_type(), rhs.get_type())
                 }
             },
             Node::Mul { lhs, rhs, .. }      |
@@ -103,48 +103,57 @@ impl Node {
             Node::Mod { lhs, rhs, .. }      |
             Node::BitAnd { lhs, rhs, .. }   |
             Node::BitOr  { lhs, rhs, .. }   |
-            Node::BitXor { lhs, rhs, .. }   =>  get_common_type(&lhs.get_type(), &rhs.get_type()),
-            Node::Neg (..)              =>  ty_long(None),
+            Node::BitXor { lhs, rhs, .. }   =>  get_common_type(lhs.get_type(), rhs.get_type()),
+            Node::Neg (..)              =>  Rc::new(RefCell::new(ty_long(None))),
             Node::Eq { .. }             |
             Node::Ne { .. }             |
             Node::Lt { .. }             |
-            Node::Le { .. }             =>  ty_int(None),
+            Node::Le { .. }             =>  Rc::new(RefCell::new(ty_int(None))),
             Node::Assign { lhs, .. }    =>  {
                 let ty = lhs.get_type();
-                if ty.kind == TypeKind::Array {
+                if ty.borrow().kind == TypeKind::Array {
                     self.get_token().error("not an lvalue");
                 }
 
                 ty
             }
             Node::Comma { rhs, .. }         =>  rhs.get_type(),
-            Node::Member { member, ..}      =>  member.ty.clone(),
+            Node::Member { member, ..}      =>  Rc::clone(&member.ty),
             Node::Addr (expr, ..)           =>  {
                 let ty = expr.get_type();
-                match ty.kind {
+                let ret = match ty.borrow().kind {
                     TypeKind::Array =>  {
-                        ty_ptr(None, Some(Box::new(*ty.base.unwrap().clone())))
+                        let base = Rc::clone(ty.borrow().base.as_ref().unwrap());
+                        Rc::new(RefCell::new(ty_ptr(
+                            None,
+                            Some(base),
+                        )))
                     },
-                    _   =>  ty_ptr(None, Some(Box::new(ty.clone()))),
-                }
-                
+                    _   =>  Rc::new(RefCell::new(ty_ptr(
+                        None,
+                        Some(Rc::clone(&ty)),
+                    ))),
+                };
+
+                ret
             },
             Node::Deref (expr, ..)  =>  {
                 let ty = expr.get_type();
 
-                if ty.kind == TypeKind::Void {
+                if ty.borrow().kind == TypeKind::Void {
                     self.get_token().error("deferencing a void pointer");
                 }
 
-                if ty.base.is_none() {
+                if ty.borrow().base.is_none() {
                     self.get_token().error("invalid pointer dereference");
                 }
 
-                *ty.base.unwrap()
+                let base = Rc::clone(&ty.borrow().base.as_ref().unwrap());
+                base
             },
             Node::Not (..)                      |
             Node::LogAnd {..}                   |
-            Node::LogOr  {..}                   =>  ty_int(None),
+            Node::LogOr  {..}                   =>  Rc::new(RefCell::new(ty_int(None))),
             Node::BitNot (expr, ..)             |
             Node::ExprStmt (expr, ..)           => expr.get_type(),
             Node::StmtExpr (body, ..)           => {
@@ -159,9 +168,9 @@ impl Node {
             Node::FuncCall { ret_ty, .. }   =>  ret_ty.as_ref().unwrap().clone(),
             Node::Num ( val, ..)            =>  {
                 if *val == *val as u32 as u64 {
-                    return ty_int(None);
+                    return Rc::new(RefCell::new(ty_int(None)));
                 } else {
-                    return ty_long(None);
+                    return Rc::new(RefCell::new(ty_long(None)));
                 }
             },
             Node::Cast { ty, .. }       =>  ty.clone(),

@@ -35,7 +35,7 @@ pub struct Parser {
     global:         Rc<RefCell<Env>>,
     pub local:      Rc<RefCell<Env>>,
     scope:          Rc<RefCell<Scope>>,
-    current_fn:     Option<Type>,
+    current_fn:     Option<Rc<RefCell<Type>>>,
 }
 
 impl Parser {
@@ -85,34 +85,34 @@ impl Parser {
         self.scope.borrow_mut().objs.push(Rc::clone(&obj));
     }
 
-    fn push_tag_scope(&mut self, name: &str, tag: Type) {
-        self.scope.borrow_mut().tags.insert(name.to_string(), tag);
+    fn push_tag_scope(&mut self, name: &str, tag: Rc<RefCell<Type>>) {
+        self.scope.borrow_mut().tags.insert(name.to_string(), Rc::clone(&tag));
     }
 
-    fn push_typedef_scope(&mut self, name: &str, typedef: Type) {
+    fn push_typedef_scope(&mut self, name: &str, typedef: Rc<RefCell<Type>>) {
         self.scope.borrow_mut().typedefs.insert(name.to_string(), typedef);
     }
 
-    fn new_lvar(&mut self, ty: &Type, token: &Token) -> Rc<RefCell<Obj>> {
+    fn new_lvar(&mut self, ty: Rc<RefCell<Type>>, token: &Token) -> Rc<RefCell<Obj>> {
         let obj = (*self.local).borrow_mut().add_var(ty, None, token, true, &self.scope.borrow());
         self.push_scope(Rc::clone(&obj));
 
         obj
     }
 
-    fn new_gvar(&mut self, ty: &Type, token: &Token) -> Rc<RefCell<Obj>> {
-        let obj = self.global.borrow_mut().add_var(&ty, None, &token, false, &self.scope.borrow());
+    fn new_gvar(&mut self, ty: Rc<RefCell<Type>>, token: &Token) -> Rc<RefCell<Obj>> {
+        let obj = self.global.borrow_mut().add_var(ty, None, token, false, &self.scope.borrow());
         self.push_scope(Rc::clone(&obj));
 
         obj
     }
 
-    fn new_param_lvars(&mut self, params: &Vec<Type>) {
+    fn new_param_lvars(&mut self, params: &Vec<Rc<RefCell<Type>>>) {
         for param in params {
-            if self.scope.borrow().find_lvar(&param.name.as_ref().unwrap().literal) != None {
-                param.name.as_ref().unwrap().error(&format!("redefinition of '{}'", &param.name.as_ref().unwrap().literal));
+            if self.scope.borrow().find_lvar(&param.borrow().name.as_ref().unwrap().literal).is_some() {
+                param.borrow().name.as_ref().unwrap().error(&format!("redefinition of '{}'", &param.borrow().name.as_ref().unwrap().literal));
             }
-            self.new_lvar(param, &param.name.as_ref().unwrap());
+            self.new_lvar(Rc::clone(&param), &param.borrow().name.as_ref().unwrap());
         }
     }
 
@@ -123,21 +123,22 @@ impl Parser {
         s
     }
 
-    fn new_anon_gvar(&mut self, token: Token, ty: Type) -> Rc<RefCell<Obj>> {
-        let mut ty = ty.clone();
-        ty.name = Some(Rc::new(Token::new(
+    fn new_anon_gvar(&mut self, token: Token, ty: Rc<RefCell<Type>>) -> Rc<RefCell<Obj>> {
+        let ty = ty.clone();
+        let name = self.new_unique_name();
+        ty.borrow_mut().name = Some(Rc::new(Token::new(
             TokenKind::Ident,
             0,
-            &self.new_unique_name(),
+            &name.clone(),
             "".to_string(),
             0,
             0,
         )));
 
         let obj = self.global.borrow_mut().add_var(
-            &ty,
+            ty.clone(),
             Some(token.literal.chars().collect()),
-            &token,
+            &ty.borrow().name.as_ref().unwrap(),
             false,
             &self.scope.borrow()
         );
@@ -146,7 +147,7 @@ impl Parser {
         obj
     }
 
-    fn new_string_literal(&mut self, token: Token, ty: Type) -> Rc<RefCell<Obj>> {
+    fn new_string_literal(&mut self, token: Token, ty: Rc<RefCell<Type>>) -> Rc<RefCell<Obj>> {
         self.new_anon_gvar(token, ty)
     }
 
@@ -162,8 +163,8 @@ impl Parser {
     //          | "typedef" | "static"
     //          | struct-decl | union-decl | typedef-name
     //          | enum-specifier)+
-    fn declspec(&mut self, attr: &mut Option<VarAttr>) -> Type {
-        let mut ty = ty_int(None);
+    fn declspec(&mut self, attr: &mut Option<VarAttr>) -> Rc<RefCell<Type>> {
+        let mut ty = Rc::new(RefCell::new(ty_int(None)));
         let mut counter = 0;
 
         while self.is_typename(&self.tokenizer.cur_token()) {
@@ -231,16 +232,16 @@ impl Parser {
             }
 
             match counter {
-                _ if counter == VOID                =>  ty = ty_void(None),
-                _ if counter == BOOL                =>  ty = ty_bool(None),
-                _ if counter == CHAR                =>  ty = ty_char(None),
-                _ if counter == SHORT               =>  ty = ty_short(None),
-                _ if counter == SHORT + INT         =>  ty = ty_short(None),
-                _ if counter == INT                 =>  ty = ty_int(None),
-                _ if counter == LONG                =>  ty = ty_long(None),
-                _ if counter == LONG + INT          =>  ty = ty_long(None),
-                _ if counter == LONG + LONG         =>  ty = ty_long(None),
-                _ if counter == LONG + LONG + INT   =>  ty = ty_long(None),
+                _ if counter == VOID                =>  ty = Rc::new(RefCell::new(ty_void(None))),
+                _ if counter == BOOL                =>  ty = Rc::new(RefCell::new(ty_bool(None))),
+                _ if counter == CHAR                =>  ty = Rc::new(RefCell::new(ty_char(None))),
+                _ if counter == SHORT               =>  ty = Rc::new(RefCell::new(ty_short(None))),
+                _ if counter == SHORT + INT         =>  ty = Rc::new(RefCell::new(ty_short(None))),
+                _ if counter == INT                 =>  ty = Rc::new(RefCell::new(ty_int(None))),
+                _ if counter == LONG                =>  ty = Rc::new(RefCell::new(ty_long(None))),
+                _ if counter == LONG + INT          =>  ty = Rc::new(RefCell::new(ty_long(None))),
+                _ if counter == LONG + LONG         =>  ty = Rc::new(RefCell::new(ty_long(None))),
+                _ if counter == LONG + LONG + INT   =>  ty = Rc::new(RefCell::new(ty_long(None))),
                 _   =>  self.tokenizer.cur_token().error("invalid type"),
             }
         }
@@ -250,61 +251,66 @@ impl Parser {
 
     // func-params = (param ("," param)*)? ")"
     // param       = declspec declarator
-    fn func_params(&mut self, ty: Type) -> Type {
+    fn func_params(&mut self, ty: Rc<RefCell<Type>>) -> Rc<RefCell<Type>> {
         let mut params = Vec::new();
         while !self.tokenizer.consume(")") {
             if params.len() != 0 {
                 self.tokenizer.skip(",");
             }
 
-            let mut ty2 = self.declspec(&mut None);
-            ty2 = self.declarator(ty2.clone());
+            let mut ty2 = Rc::clone(&self.declspec(&mut None));
+            ty2 =  Rc::clone(&self.declarator(Rc::clone(&ty2)));
+            let name = ty2.borrow().name.as_ref().unwrap().clone();
 
-            if ty2.kind == TypeKind::Array {
-                ty2 = ty_ptr(ty2.name, ty2.base);
+            if ty2.borrow().kind == TypeKind::Array {
+                let base = Rc::clone(&ty2.borrow().base.as_ref().unwrap());
+                ty2 = Rc::new(RefCell::new(ty_ptr(
+                    Some(name),
+                    Some(base),
+                )));
             }
 
             params.push(ty2);
         }
 
-        ty_function (
-            Some(Rc::clone(&ty.name.as_ref().unwrap())),
+        Rc::new(RefCell::new(ty_function (
+            Some(Rc::clone(&ty.borrow().name.as_ref().unwrap())),
             params,
-            Some(Box::new(ty)),
-        )
+            Some(Rc::clone(&ty)),
+        )))
     }
 
     // array-dimensions = num? "]" type-suffix
-    fn array_dimensions(&mut self, mut ty: Type) -> Type {
+    fn array_dimensions(&mut self, mut ty: Rc<RefCell<Type>>) -> Rc<RefCell<Type>> {
         if self.tokenizer.consume("]") {
-            ty = self.type_suffix(ty);
-            return ty_array(
-                ty.clone().name,
-                Some(Box::new(ty.clone())),
+            ty = Rc::clone(&self.type_suffix(ty));
+            return Rc::new(RefCell::new(ty_array(
+                ty.borrow().name.clone(),
+                Some(Rc::clone(&ty)),
                 0,
                 0,
-                ty.align,
-            );
+                ty.borrow().align,
+            )));
         }
 
         let sz = self.tokenizer.cur_token().get_number();
         self.tokenizer.next_token();
         self.tokenizer.skip("]");
-        ty = self.type_suffix(ty.clone());
+        ty = Rc::clone(&self.type_suffix(ty.clone()));
         
-        return ty_array (
-            ty.clone().name,
-            Some(Box::new(ty.clone())),
-            ty.clone().size*sz,
+        return Rc::new(RefCell::new(ty_array (
+            ty.borrow().name.clone(),
+            Some(Rc::clone(&ty)),
+            ty.borrow().size*sz,
             sz,
-            ty.align,
-        );
+            ty.borrow().align,
+        )));
     }
 
     // type-suffix = "(" func-pramas
     //             | "[" array-dimenstions
     //             | ε
-    fn type_suffix(&mut self, mut ty: Type) -> Type {
+    fn type_suffix(&mut self, ty: Rc<RefCell<Type>>) -> Rc<RefCell<Type>> {
         if self.tokenizer.consume("(") {
             return self.func_params(ty);
         }
@@ -317,12 +323,12 @@ impl Parser {
     }
 
     // declarator = "*"* ("(" ident ")" | "(" declarator ")" | ident) type-suffix
-    fn declarator(&mut self, mut ty: Type) -> Type {
+    fn declarator(&mut self, mut ty: Rc<RefCell<Type>>) -> Rc<RefCell<Type>> {
         while self.tokenizer.consume("*") {
-            ty = ty_ptr (
+            ty = Rc::new(RefCell::new(ty_ptr (
                 None,
-                Some(Box::new(ty.clone())),
-            );
+                Some(ty),
+            )));
         }
 
         if self.tokenizer.consume("(") {
@@ -343,7 +349,7 @@ impl Parser {
             token.error("expected a variable name");
         }
 
-        ty.name = Some(Rc::new(token));
+        ty.borrow_mut().name = Some(Rc::new(token));
         self.tokenizer.next_token();
         ty = self.type_suffix(ty);
 
@@ -351,9 +357,9 @@ impl Parser {
     }
 
     // abstract-declarator = "*"* ("(" abstract-declarator ")")? type-suffix
-    fn abstract_declarator(&mut self, mut ty: Type) -> Type {
+    fn abstract_declarator(&mut self, mut ty: Rc<RefCell<Type>>) -> Rc<RefCell<Type>> {
         while self.tokenizer.consume("*") {
-            ty = ty_ptr(None, Some(Box::new(ty)));
+            ty = Rc::new(RefCell::new(ty_ptr(None, Some(ty))));
         }
 
         if self.tokenizer.consume("(") {
@@ -378,7 +384,7 @@ impl Parser {
     }
 
     // type-name = declspec abstract-declarator
-    fn typename(&mut self) -> Type {
+    fn typename(&mut self) -> Rc<RefCell<Type>> {
         let ty = self.declspec(&mut None);
         return self.abstract_declarator(ty);
     }
@@ -387,8 +393,8 @@ impl Parser {
     //                | ident ("{" enum-list? "}")?
     //
     // enum-list      = ident ("=" num)? ("," ident ("=" num)?)*
-    fn enum_specifier(&mut self) -> Type {
-        let ty = ty_enum(None);
+    fn enum_specifier(&mut self) -> Rc<RefCell<Type>> {
+        let ty = Rc::new(RefCell::new(ty_enum(None)));
 
         // Read a struct tag.
         let mut tag = None;
@@ -397,16 +403,16 @@ impl Parser {
             self.tokenizer.next_token();
         }
 
-        if tag != None && !self.tokenizer.equal("{") {
+        if tag.is_some() && !self.tokenizer.equal("{") {
             let ty = self.scope.borrow().find_tag(
                 tag.as_ref().unwrap().literal.clone()
             );
-            if ty == None {
+            if ty.is_none() {
                 if let Some(token) = tag {
                     token.error("unknown enum type");
                 }
             }
-            return ty.unwrap();
+            return Rc::clone(&ty.unwrap());
         }
         
         self.tokenizer.skip("{");
@@ -435,14 +441,14 @@ impl Parser {
         }
 
         if tag.is_some() {
-            self.push_tag_scope(&tag.unwrap().literal, ty.clone());
+            self.push_tag_scope(&tag.unwrap().literal, Rc::clone(&ty));
         }
 
-        ty
+        Rc::clone(&ty)
     }
 
     // declaration = declspec (declarator ("=" expr)? ("," declarator ("=" expr)?)*)? ";"
-    fn declaration(&mut self, basety: Type) -> Node {
+    fn declaration(&mut self, basety: Rc<RefCell<Type>>) -> Node {
         let token = self.tokenizer.cur_token().clone();
         let mut decls = Vec::new();
 
@@ -454,19 +460,19 @@ impl Parser {
             }
             i += 1;
 
-            let tok_lhs = self.tokenizer.cur_token().clone();
-            let ty = self.declarator(basety.clone());
+            let ty = self.declarator(Rc::clone(&basety));
 
-            if ty.kind == TypeKind::Array && ty.size == 0 {
-                ty.name.unwrap().error("variable has incomplete type");
+            if ty.borrow().kind == TypeKind::Array && ty.borrow().size == 0 {
+                ty.borrow().name.as_ref().unwrap().error("variable has incomplete type");
             }
 
-            if ty.kind == TypeKind::Void {
-                ty.name.unwrap().error("variable declared void");
+            if ty.borrow().kind == TypeKind::Void {
+                ty.borrow().name.as_ref().unwrap().error("variable declared void");
             }
 
-            let name = ty.name.as_ref().unwrap().literal.clone();
-            let obj = Rc::clone(&self.new_lvar(&ty, &tok_lhs));
+            let tok_lhs = &*(ty.borrow().name.as_ref().unwrap()).clone();
+            let name = tok_lhs.clone().literal;
+            let obj = Rc::clone(&self.new_lvar(Rc::clone(&ty), &tok_lhs.clone()));
 
             if !self.tokenizer.consume("=") {
                 continue;
@@ -481,7 +487,7 @@ impl Parser {
 
             let mut rhs = self.assign();
 
-            if lhs.get_type().kind != TypeKind::Struct {
+            if lhs.get_type().borrow().kind != TypeKind::Struct {
                 rhs = Node::Cast {
                     expr:   Box::new(rhs.clone()),
                     ty:     lhs.clone().get_type(),
@@ -530,7 +536,7 @@ impl Parser {
 
             expr = Node::Cast {
                 expr:   Box::new(expr),
-                ty:     (**self.current_fn.as_ref().unwrap().ret_ty.as_ref().unwrap()).clone(),
+                ty:     Rc::clone(self.current_fn.as_ref().unwrap().borrow().ret_ty.as_ref().unwrap()),
                 token:  token.clone(),
             };
 
@@ -688,13 +694,14 @@ impl Parser {
     fn to_assign(&mut self, lhs: Node, rhs: Node, token: Token, op: &str) -> Node {
         let var = Rc::new(RefCell::new(new_lvar(
             0,
-            ty_ptr(None, Some(Box::new(lhs.get_type()))),
+            token.literal.clone(),
+            Rc::new(RefCell::new(ty_ptr(None, Some(lhs.get_type())))),
         )));
 
         let expr1 = Node::Assign {
             lhs:    Box::new(Node::Var{
                 name:   token.literal.clone(),
-                ty:     ty_ptr(None, Some(Box::new(lhs.get_type()))),
+                ty:     Rc::new(RefCell::new(ty_ptr(None, Some(lhs.get_type())))),
                 token:  token.clone(),
                 obj:    Rc::clone(&var),
             }),
@@ -710,7 +717,7 @@ impl Parser {
                 Node::Deref(
                     Box::new(Node::Var{
                         name:   token.literal.clone(),
-                        ty:     ty_ptr(None, Some(Box::new(lhs.get_type()))),
+                        ty:     Rc::new(RefCell::new(ty_ptr(None, Some(lhs.get_type())))),
                         token:  token.clone(),
                         obj:    Rc::clone(&var),
                     }),
@@ -724,7 +731,7 @@ impl Parser {
                 Node::Deref(
                     Box::new(Node::Var{
                         name:   token.literal.clone(),
-                        ty:     ty_ptr(None, Some(Box::new(lhs.get_type()))),
+                        ty:     Rc::new(RefCell::new(ty_ptr(None, Some(lhs.get_type())))),
                         token:  token.clone(),
                         obj:    Rc::clone(&var),
                     }),
@@ -738,7 +745,7 @@ impl Parser {
                 lhs:    Box::new(Node::Deref(
                     Box::new(Node::Var{
                         name:   token.literal.clone(),
-                        ty:     ty_ptr(None, Some(Box::new(lhs.get_type()))),
+                        ty:     Rc::new(RefCell::new(ty_ptr(None, Some(lhs.get_type())))),
                         token:  token.clone(),
                         obj:    Rc::clone(&var),
                     }),
@@ -752,7 +759,7 @@ impl Parser {
                 lhs:    Box::new(Node::Deref(
                     Box::new(Node::Var{
                         name:   token.literal.clone(),
-                        ty:     ty_ptr(None, Some(Box::new(lhs.get_type()))),
+                        ty:     Rc::new(RefCell::new(ty_ptr(None, Some(lhs.get_type())))),
                         token:  token.clone(),
                         obj:    Rc::clone(&var),
                     }),
@@ -766,7 +773,7 @@ impl Parser {
                 lhs:    Box::new(Node::Deref(
                     Box::new(Node::Var{
                         name:   token.literal.clone(),
-                        ty:     ty_ptr(None, Some(Box::new(lhs.get_type()))),
+                        ty:     Rc::new(RefCell::new(ty_ptr(None, Some(lhs.get_type())))),
                         token:  token.clone(),
                         obj:    Rc::clone(&var),
                     }),
@@ -780,7 +787,7 @@ impl Parser {
                 lhs:    Box::new(Node::Deref(
                     Box::new(Node::Var{
                         name:   token.literal.clone(),
-                        ty:     ty_ptr(None, Some(Box::new(lhs.get_type()))),
+                        ty:     Rc::new(RefCell::new(ty_ptr(None, Some(lhs.get_type())))),
                         token:  token.clone(),
                         obj:    Rc::clone(&var),
                     }),
@@ -794,7 +801,7 @@ impl Parser {
                 lhs:    Box::new(Node::Deref(
                     Box::new(Node::Var{
                         name:   token.literal.clone(),
-                        ty:     ty_ptr(None, Some(Box::new(lhs.get_type()))),
+                        ty:     Rc::new(RefCell::new(ty_ptr(None, Some(lhs.get_type())))),
                         token:  token.clone(),
                         obj:    Rc::clone(&var),
                     }),
@@ -808,7 +815,7 @@ impl Parser {
                 lhs:    Box::new(Node::Deref(
                     Box::new(Node::Var{
                         name:   token.literal.clone(),
-                        ty:     ty_ptr(None, Some(Box::new(lhs.get_type()))),
+                        ty:     Rc::new(RefCell::new(ty_ptr(None, Some(lhs.get_type())))),
                         token:  token.clone(),
                         obj:    Rc::clone(&var),
                     }),
@@ -825,7 +832,7 @@ impl Parser {
             lhs:    Box::new(Node::Deref (
                 Box::new(Node::Var{
                     name:   token.literal.clone(),
-                    ty:     ty_ptr(None, Some(Box::new(lhs.get_type()))),
+                    ty:     Rc::new(RefCell::new(ty_ptr(None, Some(lhs.get_type())))),
                     token:  token.clone(),
                     obj:    Rc::clone(&var),
                 }),
@@ -1063,7 +1070,7 @@ impl Parser {
     // pointer value. This function takes care of the scaling.
     fn new_add(&mut self, mut lhs: Node, mut rhs: Node, token: Token) -> Node {
         // num + num
-        if lhs.get_type().is_num() && rhs.get_type().is_num() {
+        if lhs.get_type().borrow().is_num() && rhs.get_type().borrow().is_num() {
             return  Node::Add {
                 lhs: Box::new(lhs.clone()),
                 rhs: Box::new(rhs),
@@ -1071,12 +1078,12 @@ impl Parser {
             };
         }
 
-        if lhs.get_type().is_ptr() && rhs.get_type().is_ptr() {
+        if lhs.get_type().borrow().is_ptr() && rhs.get_type().borrow().is_ptr() {
             token.error("invalid operands");
         }
 
         // Canonicalize `num + ptr` to `ptr + num`.
-        if !lhs.get_type().is_ptr() && rhs.get_type().is_ptr() {
+        if !lhs.get_type().borrow().is_ptr() && rhs.get_type().borrow().is_ptr() {
             let tmp = lhs;
             lhs = rhs;
             rhs = tmp;
@@ -1086,7 +1093,7 @@ impl Parser {
         rhs = Node::Mul {
             lhs: Box::new(rhs.clone()),
             rhs: Box::new(Node::Num(
-                lhs.get_type().base.unwrap().size,
+                lhs.get_type().borrow().base.as_ref().unwrap().borrow().size,
                 rhs.clone().get_token().clone(),
             )),
             token: rhs.get_token().clone(),
@@ -1100,7 +1107,7 @@ impl Parser {
 
     fn new_sub(&mut self, mut lhs: Node, mut rhs: Node, token: Token) -> Node {
         // num - num
-        if lhs.get_type().is_num() && rhs.get_type().is_num() {
+        if lhs.get_type().borrow().is_num() && rhs.get_type().borrow().is_num() {
             return Node::Sub {
                 lhs: Box::new(lhs.clone()),
                 rhs: Box::new(rhs),
@@ -1109,11 +1116,11 @@ impl Parser {
         }
 
         // ptr - num
-        if lhs.get_type().is_ptr() && rhs.get_type().is_num() {
+        if lhs.get_type().borrow().is_ptr() && rhs.get_type().borrow().is_num() {
             rhs = Node::Mul {
                 lhs: Box::new(rhs.clone()),
                 rhs: Box::new(Node::Num(
-                    lhs.get_type().base.unwrap().size,
+                    lhs.get_type().borrow().base.as_ref().unwrap().borrow().size,
                     rhs.clone().get_token().clone(),
                 )),
                 token: rhs.get_token().clone(),
@@ -1126,7 +1133,7 @@ impl Parser {
         }
 
         // ptr - ptr, which returns how many elements are between the two.
-        if lhs.get_type().is_ptr() && rhs.get_type().is_ptr() {
+        if lhs.get_type().borrow().is_ptr() && rhs.get_type().borrow().is_ptr() {
             lhs = Node::Sub {
                 lhs: Box::new(lhs),
                 rhs: Box::new(rhs),
@@ -1135,7 +1142,7 @@ impl Parser {
             return Node::Div {
                 lhs: Box::new(lhs.clone()),
                 rhs: Box::new(Node::Num(
-                    lhs.get_type().size,
+                    lhs.get_type().borrow().size,
                     self.tokenizer.cur_token().clone(),
                 )),
                 token,
@@ -1175,7 +1182,7 @@ impl Parser {
         let var = self.global.borrow().find_var(&name);
 
         if let Some(ref func) = var {
-            if func.borrow().ty.kind != TypeKind::Function {
+            if func.borrow().ty.borrow().kind != TypeKind::Function {
                 token.error("not a function");
             }
         } else {
@@ -1185,8 +1192,8 @@ impl Parser {
         self.tokenizer.next_token();
         self.tokenizer.next_token();
 
-        let ty = var.clone().unwrap().borrow().ty.clone();
-        let mut params = ty.params;
+        let ty = Rc::clone(&var.clone().unwrap().borrow().ty);
+        let mut params = ty.borrow_mut().params.clone();
 
         let mut i = 0;
         while !self.tokenizer.consume(")") {
@@ -1199,8 +1206,8 @@ impl Parser {
             if params.len() > 0 {
                 let param = params.remove(0);
 
-                if param.kind == TypeKind::Struct ||
-                    param.kind == TypeKind::Union {
+                if param.borrow().kind == TypeKind::Struct ||
+                    param.borrow().kind == TypeKind::Union {
                     arg.get_token().error("passing struct or union is not support yet");
                 }
 
@@ -1218,7 +1225,7 @@ impl Parser {
         Node::FuncCall {
             name,
             args,
-            ret_ty: Some(*var.unwrap().borrow().ty.ret_ty.as_ref().unwrap().clone()),
+            ret_ty: Some(Rc::clone(var.unwrap().borrow().ty.borrow().ret_ty.as_ref().unwrap())),
             token,
         }
     }
@@ -1261,14 +1268,14 @@ impl Parser {
                 self.tokenizer.skip(")");
 
                 return Node::Num(
-                    ty.size,
+                    ty.borrow().size,
                     token,
                 );
             }
             else {
                 let node = self.unary();
                 return Node::Num(
-                    node.get_type().size,
+                    node.get_type().borrow().size,
                     token,
                 );
             }
@@ -1290,7 +1297,7 @@ impl Parser {
                 token.error("undefined variable");
             };
 
-            if obj.borrow().ty.kind == TypeKind::Enum {
+            if obj.borrow().ty.borrow().kind == TypeKind::Enum {
                 return Node::Num(
                     obj.borrow().enum_val,
                     token, 
@@ -1298,7 +1305,7 @@ impl Parser {
             } else {
                 return Node::Var{
                     name,
-                    ty:     obj.borrow().ty.clone(),
+                    ty:     Rc::clone(&obj.borrow().ty),
                     token,
                     obj:    Rc::clone(&obj),
                 };
@@ -1307,13 +1314,13 @@ impl Parser {
 
         if token.kind == TokenKind::Str {
             let var = self.new_string_literal(
-                token.clone(), *token.ty.clone().unwrap()
+                token.clone(), Rc::clone(token.ty.as_ref().unwrap()),
             );
             self.tokenizer.next_token();
             let ty = token.clone().ty.unwrap();
             return Node::Var {
-                name:   var.borrow().ty.name.as_ref().unwrap().literal.clone(),
-                ty:     *ty,
+                name:   var.borrow().ty.borrow().name.as_ref().unwrap().literal.clone(),
+                ty:     Rc::clone(&ty),
                 token,
                 obj:    Rc::clone(&var),
             };
@@ -1466,7 +1473,7 @@ impl Parser {
                 let ty = self.declarator(basety.clone());
                 members.push(Box::new(Member {
                     ty:     ty.clone(),
-                    name:   ty.name.as_ref().unwrap().literal.clone(),
+                    name:   ty.borrow().name.as_ref().unwrap().literal.clone(),
                     offset: 0,
                 }));
                 i += 1;
@@ -1478,57 +1485,66 @@ impl Parser {
 
     }
 
-    // struct-decl = ident? "{" struct-members
-    fn struct_decl(&mut self) -> Type {
-        // Read a struct tag.
+    fn struct_union_decl(&mut self) -> Rc<RefCell<Type>> {
         let mut tag = None;
+
         if self.tokenizer.cur_token().kind == TokenKind::Ident {
             tag = Some(self.tokenizer.cur_token().clone());
             self.tokenizer.next_token();
         }
-
-        if tag != None && !self.tokenizer.equal("{") {
+        
+        if tag.is_some() && !self.tokenizer.equal("{") {
             let ty = self.scope.borrow().find_tag(
                 tag.as_ref().unwrap().literal.clone()
             );
-            if ty == None {
-                if let Some(token) = tag {
-                    token.error("unknown struct type");
-                }
+
+            if ty.is_some() {
+                return ty.unwrap();
             }
-            return ty.unwrap();
+
+            let mut ty2 = ty_struct(Some(Rc::new(tag.clone().unwrap())), Vec::new());
+            ty2.is_incomplete = true;
+
+            let p_ty2 = Rc::new(RefCell::new(ty2));
+            self.push_tag_scope(&tag.as_ref().unwrap().literal, Rc::clone(&p_ty2));
+            return Rc::clone(&p_ty2);
         }
 
-        self.tokenizer.next_token();
+        self.tokenizer.skip("{");
+            
+        let mut ty = ty_struct(None, Vec::new());
+        ty.members = self.struct_members();
 
-        // Construct a struct object.
-        let mut ty = ty_struct (
-            None,
-            self.struct_members(),
-        );
-
-        // Assign offsets within the struct to member.
-        let mut offset = 0;
-        for member in ty.members.iter_mut() {
-            offset = align_to(offset, member.ty.align);
-            member.offset = offset;
-            offset += member.ty.size;
-
-            if ty.align < member.ty.align {
-                ty.align = member.ty.align;
-            }
-        }
-        ty.size = align_to(offset, ty.align);
+        let p_ty = Rc::new(RefCell::new(ty.clone()));
 
         if tag.is_some() {
-            self.push_tag_scope(&tag.unwrap().literal, ty.clone());
+            if let Some(tag) = self.scope.borrow().find_tag(tag.as_ref().unwrap().literal.clone()) {
+                tag.borrow_mut().members = ty.members.clone();
+                tag.borrow_mut().assign_offsets();
+                return Rc::clone(&p_ty);
+            }
+            self.push_tag_scope(&tag.as_ref().unwrap().literal, Rc::clone(&p_ty));
         }
+
+        return Rc::clone(&p_ty);
+    }
+
+    // struct-decl = ident? "{" struct-members
+    fn struct_decl(&mut self) -> Rc<RefCell<Type>> {
+        let ty = self.struct_union_decl();
+
+        if ty.borrow().is_incomplete {
+            return Rc::clone(&ty);
+        }
+
+        // Assign offsets within the struct to member.
+        ty.borrow_mut().assign_offsets();
 
         ty
     }
 
     // union-decl = ident? "{" struct-members
-    fn union_decl(&mut self) -> Type {
+    fn union_decl(&mut self) -> Rc<RefCell<Type>> {
 
         // Read a union tag.
         let mut tag = None;
@@ -1558,29 +1574,30 @@ impl Parser {
         );
 
         for member in ty.members.iter_mut() {
-            if ty.align < member.ty.align {
-                ty.align = member.ty.align;
+            if ty.align < member.ty.borrow().align {
+                ty.align = member.ty.borrow().align;
             }
-            if ty.size < member.ty.size {
-                ty.size = member.ty.size;
+            if ty.size < member.ty.borrow().size {
+                ty.size = member.ty.borrow().size;
             }
         }
         ty.size = align_to(ty.size, ty.align);
 
+        let ty2 = Rc::new(RefCell::new(ty));
+
         if tag != None {
-            self.push_tag_scope(&tag.unwrap().literal, ty.clone());
+            self.push_tag_scope(&tag.unwrap().literal, Rc::clone(&ty2));
         }
 
-        ty
+        Rc::clone(&ty2)
     }
 
-    fn get_struct_member(&self, ty: &Type) -> Member {
+    fn get_struct_member(&self, ty: Rc<RefCell<Type>>) -> Member {
         let token = self.tokenizer.cur_token();
-
-        match ty.kind {
+        match ty.borrow().kind {
             TypeKind::Struct    |
             TypeKind::Union     =>  {
-                for member in &ty.members {
+                for member in &ty.borrow().members {
                     if member.name == token.literal {
                         return *member.clone();
                     }
@@ -1594,7 +1611,7 @@ impl Parser {
     fn struct_ref(&mut self, lhs: &mut Node) -> Node {
         let token = self.tokenizer.cur_token();
 
-        match lhs.get_type().kind {
+        match lhs.get_type().borrow().kind {
             TypeKind::Struct    |
             TypeKind::Union     => (),
             _   =>  lhs.get_token().error("not a struct nor union"),
@@ -1602,7 +1619,7 @@ impl Parser {
 
         let node = Node::Member {
             base:   Box::new(lhs.clone()),
-            member: self.get_struct_member(&lhs.get_type()),
+            member: self.get_struct_member(lhs.get_type()),
             token:  token.clone(),
         };
 
@@ -1683,7 +1700,7 @@ impl Parser {
         }
     }
 
-    fn parse_typedef(&mut self, basety: Type) {
+    fn parse_typedef(&mut self, basety: Rc<RefCell<Type>>) {
         let mut first = true;
 
         while !self.tokenizer.consume(";") {
@@ -1694,13 +1711,13 @@ impl Parser {
 
             let ty = self.declarator(basety.clone());
             self.push_typedef_scope(
-                &ty.name.as_ref().unwrap().literal, ty.clone()
+                &ty.borrow().name.as_ref().unwrap().literal, ty.clone()
             );
         }
     }
 
     // function-definition = declspec declarator compound-stmt
-    fn function(&mut self, basety: Type, attr: &mut Option<VarAttr>) -> Option<Node> {
+    fn function(&mut self, basety: Rc<RefCell<Type>>, attr: &mut Option<VarAttr>) -> Option<Node> {
         let locals = Rc::new(RefCell::new( Env {
             parent:     Some(Rc::clone(&self.global)),
             objs:       Vec::new(),
@@ -1709,19 +1726,19 @@ impl Parser {
         self.local = Rc::clone(&locals);
 
         let token = self.tokenizer.cur_token().clone();
-        let mut ty = self.declarator(basety.clone());
-        ty.is_definition = !self.tokenizer.consume(";");
-        let name = ty.name.as_ref().unwrap().literal.clone();
+        let ty = self.declarator(basety.clone());
+        ty.borrow_mut().is_definition = !self.tokenizer.consume(";");
+        let name = ty.borrow().name.as_ref().unwrap().literal.clone();
 
-        self.new_gvar(&ty, &token);
-        self.current_fn = Some(ty.clone());
+        self.new_gvar(Rc::clone(&ty), &ty.borrow().name.as_ref().unwrap());
+        self.current_fn = Some(Rc::clone(&ty));
 
-        if !ty.is_definition {
+        if !ty.borrow().is_definition {
             return None;
         }
 
         self.enter_scope();
-        self.new_param_lvars(&ty.params);
+        self.new_param_lvars(&ty.borrow().params);
 
         let params = Env {
             parent: None,
@@ -1744,8 +1761,7 @@ impl Parser {
         })
     }
 
-    fn global_variables(&mut self, basety: Type) {
-        let token = self.tokenizer.cur_token().clone();
+    fn global_variables(&mut self, basety: Rc<RefCell<Type>>) {
         let mut first = true;
 
         while !self.tokenizer.consume(";") {
@@ -1755,7 +1771,9 @@ impl Parser {
             first = false;
 
             let ty = self.declarator(basety.clone());
-            self.new_gvar(&ty, &token);
+            let token = ty.borrow().name.as_ref().unwrap().clone();
+
+            self.new_gvar(ty, &token);
         }
     }
  

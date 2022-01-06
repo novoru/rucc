@@ -10,8 +10,9 @@ use crate::node::Node;
 pub struct Obj {
     // Local variables
     pub offset:     u64,
-    pub ty:         Type,   // Type
-    pub is_local:   bool,   // local or global/function
+    pub ty:         Rc<RefCell<Type>>,  // Type
+    pub is_local:   bool,               // local or global/function
+    pub name:       String,             // Variable name
 
     // Global variable of function
     pub is_function:    bool,
@@ -29,11 +30,12 @@ pub struct Obj {
     pub enum_val:   u64,
 }
 
-pub fn new_lvar(offset: u64, ty: Type) -> Obj {
+pub fn new_lvar(offset: u64, name: String, ty: Rc<RefCell<Type>>) -> Obj {
     Obj {
         offset,
         ty,
         is_local:       true,
+        name,
         is_function:    false,
         is_definition:  false,
         init_data:      None,
@@ -45,11 +47,12 @@ pub fn new_lvar(offset: u64, ty: Type) -> Obj {
 }
 
 
-pub fn new_gvar(offset: u64, ty: Type, init_data: Option<Vec<char>>) -> Obj {
+pub fn new_gvar(offset: u64, name: String, ty: Rc<RefCell<Type>>, init_data: Option<Vec<char>>) -> Obj {
     Obj {
         offset,
         ty,
         is_local:       false,
+        name,
         is_function:    false,
         is_definition:  false,
         init_data,
@@ -60,10 +63,11 @@ pub fn new_gvar(offset: u64, ty: Type, init_data: Option<Vec<char>>) -> Obj {
     }
 }
 
-pub fn obj_function(ty: Type) -> Obj {
+pub fn obj_function(name: String, ty: Rc<RefCell<Type>>) -> Obj {
     Obj {
         offset:         0,
         ty,
+        name,
         is_local:       false,
         is_function:    true,
         is_definition:  false,
@@ -78,8 +82,9 @@ pub fn obj_function(ty: Type) -> Obj {
 pub fn enum_const(name: Token, val: u64) -> Obj {
     Obj {
         offset:         0,
-        ty:             ty_enum(Some(Rc::new(name))),
+        ty:             Rc::new(RefCell::new(ty_enum(Some(Rc::new(name.clone()))))),
         is_local:       true,
+        name:           name.literal,
         is_function:    true,
         is_definition:  false,
         init_data:      None,

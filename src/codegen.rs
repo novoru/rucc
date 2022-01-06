@@ -30,8 +30,8 @@ enum TypeId {
     I64,
 }
 
-fn get_type_id(ty: &Type) -> TypeId {
-    match ty.kind {
+fn get_type_id(ty: Rc<RefCell<Type>>) -> TypeId {
+    match ty.borrow().kind {
         TypeKind::Char  =>  TypeId::I8,
         TypeKind::Short =>  TypeId::I16,
         TypeKind::Int   =>  TypeId::I32,
@@ -52,7 +52,7 @@ static CAST_TABLE: [[Option<&'static str>; 4]; 4] = [
 ];
 
 fn reg_name(lhs: &Node) -> (String, String) {
-    if lhs.get_type().kind == TypeKind::Long || lhs.get_type().base.is_some() {
+    if lhs.get_type().borrow().kind == TypeKind::Long || lhs.get_type().borrow().base.is_some() {
         ("%rax".to_string(), "%rdi".to_string())
     } else {
         ("%eax".to_string(), "%edi".to_string())
@@ -90,15 +90,15 @@ impl CodeGenerator {
     }
     
     // Load a value from where %rax is pointing to.
-    fn load(&mut self, ty: &Type) {
-        match ty.kind {
+    fn load(&mut self, ty: Rc<RefCell<Type>>) {
+        match ty.borrow().kind {
             TypeKind::Array     |
             TypeKind::Struct    |
             TypeKind::Union     => return,
             _   =>  (),
         }
 
-        match ty.size {
+        match ty.borrow().size {
             1   =>  writeln!(self.output, "  movsbl (%rax), %eax").unwrap(),
             2   =>  writeln!(self.output, "  movswl (%rax), %eax").unwrap(),
             4   =>  writeln!(self.output, "  movsxd (%rax), %rax").unwrap(),
@@ -106,13 +106,13 @@ impl CodeGenerator {
         }
     }
 
-    fn store(&mut self, ty: &Type) {
+    fn store(&mut self, ty: Rc<RefCell<Type>>) {
         self.pop("%rdi");
 
-        match ty.kind {
+        match ty.borrow().kind {
             TypeKind::Struct    |
             TypeKind::Union     => {
-                for i in 0..ty.size {
+                for i in 0..ty.borrow().size {
                     writeln!(self.output, "  mov {}(%rax), %r8b", i).unwrap();
                     writeln!(self.output, "  mov %r8b, {}(%rdi)", i).unwrap();
                 }
@@ -121,7 +121,7 @@ impl CodeGenerator {
             _   =>  (),
         }
 
-        match ty.size {
+        match ty.borrow().size {
             1   =>  writeln!(self.output, "  mov %al, (%rdi)").unwrap(),
             2   =>  writeln!(self.output, "  mov %ax, (%rdi)").unwrap(),
             4   =>  writeln!(self.output, "  mov %eax, (%rdi)").unwrap(),
@@ -129,12 +129,12 @@ impl CodeGenerator {
         }
     }
 
-    fn cast(&mut self, from: &Type, to: &Type) {
-        if to.kind == TypeKind::Void {
+    fn cast(&mut self, from: Rc<RefCell<Type>>, to: Rc<RefCell<Type>>) {
+        if to.borrow().kind == TypeKind::Void {
             return;
         }
 
-        if to.kind == TypeKind::Bool {
+        if to.borrow().kind == TypeKind::Bool {
             self.cmp_zero(from);
             writeln!(self.output, "  setne %al").unwrap();
             writeln!(self.output, "  movzx %al, %rax").unwrap();
@@ -149,8 +149,8 @@ impl CodeGenerator {
         }
     }
 
-    fn cmp_zero(&mut self, ty: &Type) {
-        if ty.is_num() && ty.size <= 4 {
+    fn cmp_zero(&mut self, ty: Rc<RefCell<Type>>) {
+        if ty.borrow().is_num() && ty.borrow().size <= 4 {
             writeln!(self.output, "  cmp $0, %eax").unwrap();
         } else {
             writeln!(self.output, "  cmp $0, %rax").unwrap();
@@ -165,7 +165,7 @@ impl CodeGenerator {
                 if obj.borrow().is_local {
                     writeln!(self.output, "  lea {}(%rbp), %rax", -(obj.borrow().offset as i64)).unwrap();
                 } else {
-                    writeln!(self.output, "  lea {}(%rip), %rax", obj.borrow().ty.name.as_ref().unwrap().literal).unwrap();
+                    writeln!(self.output, "  lea {}(%rip), %rax", obj.borrow().ty.borrow().name.as_ref().unwrap().literal).unwrap();
                 }
                 return;
             },
@@ -217,7 +217,7 @@ impl CodeGenerator {
                 self.push();
                 self.gen_expr(lhs);
                 self.pop("%rdi");
-                if lhs.get_type().size == 8 {
+                if lhs.get_type().borrow().size == 8 {
                     writeln!(self.output, "  cqo").unwrap();
                 } else {
                     writeln!(self.output, "  cdq").unwrap();
@@ -230,7 +230,7 @@ impl CodeGenerator {
                 self.push();
                 self.gen_expr(lhs);
                 self.pop("%rdi");
-                if lhs.get_type().size == 8 {
+                if lhs.get_type().borrow().size == 8 {
                     writeln!(self.output, "  cqo").unwrap();
                 } else {
                     writeln!(self.output, "  cdq").unwrap();
@@ -305,7 +305,7 @@ impl CodeGenerator {
             },
             Node::Deref (expr, ..)  =>  {
                 self.gen_expr(expr);
-                self.load(&node.get_type());
+                self.load(node.get_type());
             },
             Node::Not (expr, ..)    =>  {
                 self.gen_expr(expr);
@@ -324,15 +324,15 @@ impl CodeGenerator {
                 self.gen_addr(lhs);
                 self.push();
                 self.gen_expr(rhs);
-                self.store(&node.get_type());
+                self.store(node.get_type());
             },
             Node::Var { ty, .. }    =>  {
                 self.gen_addr(node);
-                self.load(&ty);
+                self.load(Rc::clone(ty));
             },
             Node::Member { .. } =>  {
                 self.gen_addr(node);
-                self.load(&node.get_type());
+                self.load(node.get_type());
             },
             Node::StmtExpr (body, ..)   =>  {
                 self.gen_stmt(body);
@@ -343,7 +343,7 @@ impl CodeGenerator {
             },
             Node::Cast { expr, .. } =>  {
                 self.gen_expr(expr);
-                self.cast(&expr.get_type(), &node.get_type());
+                self.cast(expr.get_type(), node.get_type());
             },
             Node::LogAnd { lhs, rhs, ..}    =>  {
                 let c = self.count();
@@ -480,7 +480,7 @@ impl CodeGenerator {
                 
                 // Save passed-by-register arguments to the stack
                 for (i, param) in params.objs.iter().enumerate() {
-                    self.store_gp(i, param.borrow().offset as i64, param.borrow().ty.size);
+                    self.store_gp(i, param.borrow().offset as i64, param.borrow().ty.borrow().size);
                 }
 
                 // Emit code
@@ -500,20 +500,20 @@ impl CodeGenerator {
 
     fn emit_data(&mut self, objs: &Vec<Rc<RefCell<Obj>>>) {
         for var in objs {
-            if var.borrow().ty.kind == TypeKind::Function {
+            if var.borrow().ty.borrow().kind == TypeKind::Function {
                 continue;
             }
 
             writeln!(self.output, "  .data").unwrap();
-            writeln!(self.output, "  .globl {}", var.borrow().ty.name.as_ref().unwrap().literal).unwrap();
-            writeln!(self.output, "{}:", var.borrow().ty.name.as_ref().unwrap().literal).unwrap();
+            writeln!(self.output, "  .globl {}", var.borrow().name).unwrap();
+            writeln!(self.output, "{}:", var.borrow().name).unwrap();
 
             if let Some(init_data) = &var.borrow().init_data {
                 for ch in init_data {
                     writeln!(self.output, "  .byte {}", *ch as u64).unwrap();
                 }
             } else {
-                writeln!(self.output, "  .zero {}", var.borrow().ty.size).unwrap();
+                writeln!(self.output, "  .zero {}", var.borrow().ty.borrow().size).unwrap();
             }
         }
     }

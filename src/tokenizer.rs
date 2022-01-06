@@ -1,5 +1,6 @@
 use std::process;
 use std::rc::Rc;
+use std::cell::RefCell;
 use crate::ty::*;
 
 static KWDS: &'static [&str] = &[
@@ -29,7 +30,7 @@ pub struct Token {
     loc:            usize,
     pub val:        Option<u64>,
     pub literal:    String,
-    pub ty:         Option<Box<Type>>,   // Used if TokenKind::Str
+    pub ty:         Option<Rc<RefCell<Type>>>,   // Used if TokenKind::Str
     line:           String,
     lineno:         usize,
     indent:         usize,
@@ -74,13 +75,13 @@ impl Token {
             indent:     indent,
         };
         
-        let ty = Some(Box::new(ty_array (
+        let ty = Some(Rc::new(RefCell::new(ty_array (
             Some(Rc::new(token.clone())),
-            Some(Box::new(ty_char(None))),
+            Some(Rc::new(RefCell::new(ty_char(None)))),
             len,
             len,
             8,
-        )));
+        ))));
 
         token.ty = ty;
         token
