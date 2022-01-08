@@ -37,17 +37,18 @@ pub enum Node {
     LogOr       { lhs: Box<Node>, rhs: Box<Node>, token: Token },   // ||
     Return      ( Box<Node>, Token ),                               // "return"
     If          {                                                   // "if"
-        cond:   Box<Node>,
-        then:   Box<Node>,
-        els:    Option<Box<Node>>,
-        token:  Token,
+        cond:       Box<Node>,
+        then:       Box<Node>,
+        els:        Option<Box<Node>>,
+        token:      Token,
     },
     For         {                                                   // "for" of "while"
-        init:   Option<Box<Node>>,
-        cond:   Option<Box<Node>>,
-        inc:    Option<Box<Node>>,
-        body:   Box<Node>,
-        token:  Token,
+        init:       Option<Box<Node>>,
+        cond:       Option<Box<Node>>,
+        inc:        Option<Box<Node>>,
+        body:       Box<Node>,
+        brk_label:  String,
+        token:      Token,
     },
     Block       ( Vec<Box<Node>>, Token ),                          // { ... }
     ExprStmt    ( Box<Node>, Token ),                               // Expression statement
@@ -59,7 +60,7 @@ pub enum Node {
         obj:    Rc<RefCell<Obj>>
     },
     Goto        {                                                   // "goto"
-        label:          String,
+        label:          Option<String>,                             // if label is None, it's break statement
         unique_label:   Option<String>,
         token:          Token,
     },
@@ -291,9 +292,12 @@ impl Node {
             Node::StmtExpr(expr, ..)    =>  expr.resolve_goto_labels(labels),
             Node::ExprStmt(stmt, ..)    =>  stmt.resolve_goto_labels(labels),
             Node::Goto { label: glabel, unique_label: gulabel, token }  =>  {
+                if glabel.is_none() {
+                    return;
+                }
                 for label in labels {
                     if let Node::Label { label: llabel, unique_label: uulabel, .. } = &*label {
-                        if glabel == llabel {
+                        if glabel.as_ref().unwrap() == llabel {
                             *gulabel = Some(uulabel.to_string());
                             return;
                         }

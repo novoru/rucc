@@ -39,6 +39,8 @@ pub struct Parser {
 
     // Lists of all goto labels in the curent function.
     labels:         Vec<Node>,
+
+    brk_label:      Option<String>,
 }
 
 impl Parser {
@@ -67,7 +69,8 @@ impl Parser {
             })),
             current_fn: None,
 
-            labels: Vec::new(),
+            labels:     Vec::new(),
+            brk_label:  None,
         }
     }
 
@@ -532,6 +535,7 @@ impl Parser {
     //      | "for" "(" expr-stmt expr? ";" expr?  ")" stmt
     //      | "while" "(" expr ")" stmt
     //      | "goto" ident ";"
+    //      | "break" ";"
     //      | ident ":" stmt
     //      | compound-stmt
     //      | expr-stmt
@@ -578,6 +582,10 @@ impl Parser {
 
             self.enter_scope();
 
+            let brk = self.brk_label.clone();
+            let brk_label = self.new_unique_name();
+            self.brk_label = Some(brk_label.clone());
+
             let init = if !self.tokenizer.consume(";") {
                 let token = self.tokenizer.cur_token();
                 if self.is_typename(&token) {
@@ -610,11 +618,14 @@ impl Parser {
 
             self.leave_scope();
 
+            self.brk_label = brk;
+
             return Node::For {
                 init,
                 cond,
                 inc,
                 body,
+                brk_label,
                 token,
              }
         }
@@ -629,13 +640,20 @@ impl Parser {
 
             self.tokenizer.skip(")");
 
+            let brk = self.brk_label.clone();
+            let brk_label = self.new_unique_name();
+            self.brk_label = Some(brk_label.clone());
+
             let body = Box::new(self.stmt());
+
+            self.brk_label = brk;
 
             return Node::For {
                 init: None,
                 cond,
                 inc: None,
                 body,
+                brk_label,
                 token,
              };
         }
@@ -643,7 +661,7 @@ impl Parser {
         if self.tokenizer.consume("goto") {
             token = self.tokenizer.cur_token().clone();
             let node = Node::Goto {
-                label:          self.get_ident(),
+                label:          Some(self.get_ident()),
                 unique_label:   None,
                 token,
             };
@@ -651,6 +669,19 @@ impl Parser {
             self.tokenizer.skip(";");
 
             return node;
+        }
+
+        if self.tokenizer.consume("break") {
+            if self.brk_label.is_none() {
+                token.error("stray break");
+            }
+            self.tokenizer.skip(";");
+
+            return Node::Goto {
+                label:          None,
+                unique_label:   Some(self.brk_label.as_ref().unwrap().to_string()),
+                token,
+            };
         }
 
         if token.kind == TokenKind::Ident && self.tokenizer.peek_token().equal(":") {

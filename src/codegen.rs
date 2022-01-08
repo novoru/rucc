@@ -406,7 +406,7 @@ impl CodeGenerator {
                 };
                 writeln!(self.output, ".L.end.{}:", c).unwrap();
             },
-            Node::For { init, cond, inc, body, .. } =>  {
+            Node::For { init, cond, inc, body, brk_label, .. } =>  {
                 let c = self.count();
 
                 if let Some(stmt) = init {
@@ -417,7 +417,7 @@ impl CodeGenerator {
                 if let Some(expr) = cond {
                     self.gen_expr(expr);
                     writeln!(self.output, "  cmp $0, %rax").unwrap();
-                    writeln!(self.output, "  je .L.end.{}", c).unwrap();
+                    writeln!(self.output, "  je {}", brk_label).unwrap();
                 }
 
                 self.gen_stmt(body);
@@ -427,7 +427,7 @@ impl CodeGenerator {
                 }
 
                 writeln!(self.output, "  jmp .L.begin.{}", c).unwrap();
-                writeln!(self.output, ".L.end.{}:", c).unwrap();
+                writeln!(self.output, "{}:", brk_label).unwrap();
             },
             Node::Block (stmts, ..) =>  {
                 for stmt in stmts {
