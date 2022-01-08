@@ -686,7 +686,8 @@ impl Parser {
         self.enter_scope();
 
         while !self.tokenizer.consume("}") {
-            if self.is_typename(&self.tokenizer.cur_token()) {
+            if self.is_typename(&self.tokenizer.cur_token()) &&
+              !self.tokenizer.peek_token().equal(":") {
                 let token = self.tokenizer.cur_token().clone();
                 let mut attr = Some(VarAttr {
                     token:      Some(token),
