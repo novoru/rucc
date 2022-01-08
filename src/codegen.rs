@@ -406,7 +406,7 @@ impl CodeGenerator {
                 };
                 writeln!(self.output, ".L.end.{}:", c).unwrap();
             },
-            Node::For { init, cond, inc, body, brk_label, .. } =>  {
+            Node::For { init, cond, inc, body, brk_label, cont_label, .. } =>  {
                 let c = self.count();
 
                 if let Some(stmt) = init {
@@ -421,6 +421,7 @@ impl CodeGenerator {
                 }
 
                 self.gen_stmt(body);
+                writeln!(self.output, "{}:", cont_label).unwrap();
 
                 if let Some(expr) = inc {
                     self.gen_expr(expr);

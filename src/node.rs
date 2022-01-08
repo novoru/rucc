@@ -48,6 +48,7 @@ pub enum Node {
         inc:        Option<Box<Node>>,
         body:       Box<Node>,
         brk_label:  String,
+        cont_label: String,
         token:      Token,
     },
     Block       ( Vec<Box<Node>>, Token ),                          // { ... }
