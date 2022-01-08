@@ -36,6 +36,9 @@ pub struct Parser {
     pub local:      Rc<RefCell<Env>>,
     scope:          Rc<RefCell<Scope>>,
     current_fn:     Option<Rc<RefCell<Type>>>,
+
+    // Lists of all goto labels in the curent function.
+    labels:         Vec<Node>,
 }
 
 impl Parser {
@@ -63,6 +66,8 @@ impl Parser {
                 typedefs:   HashMap::new(),
             })),
             current_fn: None,
+
+            labels: Vec::new(),
         }
     }
 
@@ -526,10 +531,12 @@ impl Parser {
     //      | "if" "(" expr ")" stmt ("else" stmt)?
     //      | "for" "(" expr-stmt expr? ";" expr?  ")" stmt
     //      | "while" "(" expr ")" stmt
+    //      | "goto" ident ";"
+    //      | ident ":" stmt
     //      | compound-stmt
     //      | expr-stmt
     fn stmt(&mut self) -> Node {
-        let token = self.tokenizer.cur_token().clone();
+        let mut token = self.tokenizer.cur_token().clone();
         if self.tokenizer.consume("return") {
             let mut expr = self.expr();
             self.tokenizer.skip(";");
@@ -631,6 +638,37 @@ impl Parser {
                 body,
                 token,
              };
+        }
+
+        if self.tokenizer.consume("goto") {
+            token = self.tokenizer.cur_token().clone();
+            let node = Node::Goto {
+                label:          self.get_ident(),
+                unique_label:   None,
+                token,
+            };
+            self.tokenizer.next_token();
+            self.tokenizer.skip(";");
+
+            return node;
+        }
+
+        if token.kind == TokenKind::Ident && self.tokenizer.peek_token().equal(":") {
+            let ident = self.get_ident();
+            self.tokenizer.next_token();
+            self.tokenizer.next_token();
+            let stmt = self.stmt();
+
+            let node = Node::Label {
+                stmt:   Box::new(stmt),
+                label:  ident,
+                unique_label:   self.new_unique_name(),
+                token,
+            };
+
+            self.labels.push(node.clone());
+
+            return node;
         }
 
         if token.equal("{") {
@@ -1746,8 +1784,9 @@ impl Parser {
             stack_size: 0,
         };
 
-        let mut body = Vec::new();
-        body.push(Box::new(self.compound_stmt()));
+        self.labels = Vec::new();
+        let mut body = Box::new(self.compound_stmt());
+        body.resolve_goto_labels(&self.labels);
 
         self.leave_scope();
         Some(Node::Function {

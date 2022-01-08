@@ -58,8 +58,19 @@ pub enum Node {
         token:  Token,
         obj:    Rc<RefCell<Obj>>
     },
+    Goto        {                                                   // "goto"
+        label:          String,
+        unique_label:   Option<String>,
+        token:          Token,
+    },
+    Label       {                                                   // Labeled statement
+        stmt:           Box<Node>,
+        label:          String,
+        unique_label:   String,
+        token:          Token,
+    },
     FuncCall    {                                                   // Function call
-        name:   String,
+        name:  String,
         args:   Vec<Box<Node>>,
         ret_ty: Option<Rc<RefCell<Type>>>,
         token:  Token
@@ -67,7 +78,7 @@ pub enum Node {
     Function    {                                                   // Function definition
         name:       String,
         params:     Env,
-        body:       Vec<Box<Node>>,
+        body:       Box<Node>,
         locals:     Rc<RefCell<Env>>,
         ret_ty:     Option<Rc<RefCell<Type>>>,
         is_static:  bool,
@@ -209,6 +220,8 @@ impl Node {
             Node::ExprStmt  ( .., token )   |
             Node::StmtExpr  ( .., token )   |
             Node::Var       { token, .. }   |
+            Node::Goto      { token, .. }   |
+            Node::Label     { token, .. }   |
             Node::FuncCall  { token, .. }   |
             Node::Function  { token, .. }   |
             Node::Program   { token, .. }   |
@@ -216,4 +229,91 @@ impl Node {
             Node::Cast      { token, .. }   =>  token,
         }
     }
+
+    // This function matches gotos with labels.
+    pub fn resolve_goto_labels(&mut self, labels: &Vec<Node>) {
+        match self {
+            Node::Add       { lhs, rhs, .. }  |
+            Node::Sub       { lhs, rhs, .. }  |
+            Node::Mul       { lhs, rhs, .. }  |
+            Node::Div       { lhs, rhs, .. }  |
+            Node::Mod       { lhs, rhs, .. }  |
+            Node::BitAnd    { lhs, rhs, .. }  |
+            Node::BitOr     { lhs, rhs, .. }  |
+            Node::BitXor    { lhs, rhs, .. }  =>    {
+                lhs.resolve_goto_labels(labels);
+                rhs.resolve_goto_labels(labels);
+            },
+            Node::Neg   (expr, ..)  =>  expr.resolve_goto_labels(labels),
+            Node::Eq        { lhs, rhs, .. }  |
+            Node::Ne        { lhs, rhs, .. }  |
+            Node::Lt        { lhs, rhs, .. }  |
+            Node::Le        { lhs, rhs, .. }  |
+            Node::Assign    { lhs, rhs, .. }  |
+            Node::Comma     { lhs, rhs, .. }  =>    {
+                lhs.resolve_goto_labels(labels);
+                rhs.resolve_goto_labels(labels);
+            },
+            Node::Addr      (expr, ..)  |
+            Node::Deref     (expr, ..)  |
+            Node::Not       (expr, ..)  |
+            Node::BitNot    (expr, ..)  =>  expr.resolve_goto_labels(labels),
+            Node::LogAnd    { lhs, rhs, .. }    |
+            Node::LogOr     { lhs, rhs, .. }    =>    {
+                lhs.resolve_goto_labels(labels);
+                rhs.resolve_goto_labels(labels);
+            },
+            Node::Return    (expr, ..)  =>  expr.resolve_goto_labels(labels),
+            Node::If        { cond, then, els, .. } =>  {
+                cond.resolve_goto_labels(labels);
+                then.resolve_goto_labels(labels);
+                if let Some(block) = els {
+                    block.resolve_goto_labels(labels);
+                }
+            },
+            Node::For       { init, cond, inc, body, .. }   =>  {
+                if let Some(exprstmt) = init {
+                    exprstmt.resolve_goto_labels(labels);
+                }
+                if let Some(expr) = cond {
+                    expr.resolve_goto_labels(labels);
+                }
+                if let Some(expr) = inc {
+                    expr.resolve_goto_labels(labels);
+                }
+                body.resolve_goto_labels(labels);
+            },
+            Node::Block     ( ref mut stmts, .. )   =>  {
+                for stmt in stmts {
+                    stmt.resolve_goto_labels(labels);
+                }
+            },
+            Node::StmtExpr(expr, ..)    =>  expr.resolve_goto_labels(labels),
+            Node::ExprStmt(stmt, ..)    =>  stmt.resolve_goto_labels(labels),
+            Node::Goto { label: glabel, unique_label: gulabel, token }  =>  {
+                for label in labels {
+                    if let Node::Label { label: llabel, unique_label: uulabel, .. } = &*label {
+                        if glabel == llabel {
+                            *gulabel = Some(uulabel.to_string());
+                            return;
+                        }
+                    }
+                }
+    
+                if gulabel.is_none() {
+                    token.error("use of undeclared label");
+                }
+            },
+            Node::Label     { stmt, .. }    =>  {
+                stmt.resolve_goto_labels(labels);
+            },
+            Node::FuncCall  { args, .. }    =>  {
+                for arg in args {
+                    arg.resolve_goto_labels(labels);
+                }
+            }
+            Node::Cast  { expr, .. }    =>  expr.resolve_goto_labels(labels),
+            _   =>  return,
+        }        
+    } 
 }

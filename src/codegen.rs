@@ -434,6 +434,13 @@ impl CodeGenerator {
                     self.gen_stmt(stmt);
                 }
             },
+            Node::Goto { unique_label, .. } =>  {
+                writeln!(self.output, "  jmp {}", unique_label.as_ref().unwrap()).unwrap();
+            },
+            Node::Label { stmt, unique_label, .. } =>   {
+                writeln!(self.output, "{}:", unique_label).unwrap();
+                self.gen_stmt(stmt);
+            },
             Node::Return (expr, ..) =>  {
                 self.gen_expr(expr);
                 if let Some(func) = &self.cur_func {
@@ -484,9 +491,7 @@ impl CodeGenerator {
                 }
 
                 // Emit code
-                for stmt in body {
-                    self.gen_stmt(&stmt);
-                }
+                self.gen_stmt(body);
                 
                 // Epilogue
                 writeln!(self.output, ".L.return.{}:", name).unwrap();
