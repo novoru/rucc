@@ -25,6 +25,12 @@ pub enum Node {
     Lt          { lhs: Box<Node>, rhs: Box<Node>, token: Token },   // <
     Le          { lhs: Box<Node>, rhs: Box<Node>, token: Token },   // <=
     Assign      { lhs: Box<Node>, rhs: Box<Node>, token: Token },   // =
+    Cond        {                                                   // ?:
+        cond:   Box<Node>,
+        then:   Box<Node>,
+        els:    Box<Node>,
+        token:  Token,
+    },
     Comma       { lhs: Box<Node>, rhs: Box<Node>, token: Token },   // ,
     Member      {
         base:   Box<Node>,
@@ -148,6 +154,14 @@ impl Node {
 
                 ty
             }
+            Node::Cond  { then, els, ..}    =>  {
+                if then.get_type().borrow().kind == TypeKind::Void ||
+                   els.get_type().borrow().kind == TypeKind::Void {
+                    Rc::new(RefCell::new(ty_void(None)))
+                } else {
+                    get_common_type(then.get_type(), els.get_type())
+                }
+            },
             Node::Comma { rhs, .. }         =>  rhs.get_type(),
             Node::Member { member, ..}      =>  Rc::clone(&member.ty),
             Node::Addr (expr, ..)           =>  {
@@ -227,6 +241,7 @@ impl Node {
             Node::Lt        { token, .. }   |
             Node::Le        { token, .. }   |
             Node::Assign    { token, .. }   |
+            Node::Cond      { token, .. }   |
             Node::Comma     { token, .. }   |
             Node::Member    { token, .. }   |
             Node::Addr      ( .., token )   |
@@ -275,7 +290,15 @@ impl Node {
             Node::Ne        { lhs, rhs, .. }  |
             Node::Lt        { lhs, rhs, .. }  |
             Node::Le        { lhs, rhs, .. }  |
-            Node::Assign    { lhs, rhs, .. }  |
+            Node::Assign    { lhs, rhs, .. }  =>    {
+                lhs.resolve_goto_labels(labels);
+                rhs.resolve_goto_labels(labels);
+            },
+            Node::Cond      { cond, then, els, .. } =>  {
+                cond.resolve_goto_labels(labels);
+                then.resolve_goto_labels(labels);
+                els.resolve_goto_labels(labels);
+            }
             Node::Comma     { lhs, rhs, .. }  =>    {
                 lhs.resolve_goto_labels(labels);
                 rhs.resolve_goto_labels(labels);

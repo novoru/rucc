@@ -1073,11 +1073,11 @@ impl Parser {
         };
     } 
 
-    // assign    = logor (assign-op assign)?
+    // assign    = conditional (assign-op assign)?
     // assign-op = "=" | "+=" | "-=" | "*=" | "/=" | "%=" | "&=" | "|=" | "^="
     fn assign(&mut self) -> Node {
         let token = self.tokenizer.cur_token().clone();
-        let node = self.logor();
+        let node = self.conditional();
         let op = self.tokenizer.cur_token().clone().literal;
 
         if self.tokenizer.consume("=") {
@@ -1098,6 +1098,27 @@ impl Parser {
         }
 
         node
+    }
+
+    // conditional = logor ("?" expr ":" conditional)?
+    fn conditional(&mut self) -> Node {
+        let token = self.tokenizer.cur_token().clone();
+        let cond = self.logor();
+
+        if !self.tokenizer.consume("?") {
+            return cond;
+        }
+
+        let then = Box::new(self.expr());
+        self.tokenizer.skip(":");
+        let els = Box::new(self.conditional());
+
+        return Node::Cond {
+            cond:   Box::new(cond),
+            then,
+            els,
+            token,
+        };
     }
 
     // expr-stmt = expr? ";"

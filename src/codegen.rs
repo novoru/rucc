@@ -355,6 +355,17 @@ impl CodeGenerator {
             Node::StmtExpr (body, ..)   =>  {
                 self.gen_stmt(body);
             },
+            Node::Cond  { cond, then, els, .. } =>  {
+                let c = self.count();
+                self.gen_expr(cond);
+                writeln!(self.output, "  cmp $0, %rax").unwrap();
+                writeln!(self.output, "  je .L.else.{}", c).unwrap();
+                self.gen_expr(then);
+                writeln!(self.output, "  jmp .L.end.{}", c).unwrap();
+                writeln!(self.output, ".L.else.{}:", c).unwrap();
+                self.gen_expr(els);
+                writeln!(self.output, ".L.end.{}:", c).unwrap();
+            },
             Node::Comma { lhs, rhs, .. }    =>  {
                 self.gen_expr(lhs);
                 self.gen_expr(rhs);
