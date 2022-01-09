@@ -430,6 +430,36 @@ impl CodeGenerator {
                 writeln!(self.output, "  jmp .L.begin.{}", c).unwrap();
                 writeln!(self.output, "{}:", brk_label).unwrap();
             },
+            Node::Switch { cond, stmt, cases, brk_label, default, .. }   =>  {
+                self.gen_expr(cond);
+
+                for case in cases.borrow().iter() {
+                    let reg = if cond.get_type().borrow().size == 8 {
+                        "%rax"
+                    } else {
+                        "%eax"
+                    };
+
+                    if let Node::Case { label, val, .. } = &**case {
+                        writeln!(self.output, "  cmp ${}, {}", val.unwrap() as i32, reg).unwrap();
+                        writeln!(self.output, "  je {}", label).unwrap();
+                    }
+                }
+
+                if let Some(case) = default {
+                    if let Node::Case { label, .. } = &**case {
+                        writeln!(self.output, "  jmp {}", label).unwrap();
+                    }
+                }
+
+                writeln!(self.output, "  jmp {}", brk_label).unwrap();
+                self.gen_stmt(stmt);
+                writeln!(self.output, "{}:", brk_label).unwrap();
+            },
+            Node::Case  { label, stmt, .. } =>  {
+                writeln!(self.output, "{}:", label).unwrap();
+                self.gen_stmt(stmt);
+            },
             Node::Block (stmts, ..) =>  {
                 for stmt in stmts {
                     self.gen_stmt(stmt);

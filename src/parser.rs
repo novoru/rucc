@@ -43,6 +43,10 @@ pub struct Parser {
     // Current "goto" and "continue" jump targets.
     brk_label:      Option<String>,
     cont_label:     Option<String>,
+
+    current_switch: bool,
+    current_switch_cases:   Option<Rc<RefCell<Vec<Box<Node>>>>>,
+    current_switch_default: Option<Box<Node>>,
 }
 
 impl Parser {
@@ -74,6 +78,10 @@ impl Parser {
             labels:     Vec::new(),
             brk_label:  None,
             cont_label: None,
+
+            current_switch: false,
+            current_switch_cases:   None,
+            current_switch_default: None,
         }
     }
 
@@ -535,6 +543,9 @@ impl Parser {
 
     // stmt = "return" expr ";"
     //      | "if" "(" expr ")" stmt ("else" stmt)?
+    //      | "switch" "(" expr ")" stmt
+    //      | "case" num ":" stmt
+    //      | "default" ":" stmt
     //      | "for" "(" expr-stmt expr? ";" expr?  ")" stmt
     //      | "while" "(" expr ")" stmt
     //      | "goto" ident ";"
@@ -579,6 +590,92 @@ impl Parser {
                 els,
                 token,
              };
+        }
+
+        if self.tokenizer.consume("switch") {
+            self.tokenizer.skip("(");
+            let cond = Box::new(self.expr());
+            self.tokenizer.skip(")");
+
+            let sw = self.current_switch;
+            self.current_switch = true;
+
+            let brk = self.brk_label.clone();
+            let brk_label = self.new_unique_name();
+            self.brk_label = Some(brk_label.clone());
+
+            let sw_cases = self.current_switch_cases.clone();
+            let cases = Rc::new(RefCell::new(Vec::new()));
+            self.current_switch_cases = Some(Rc::clone(&cases));
+
+            let sw_default = self.current_switch_default.clone();
+
+            let stmt = Box::new(self.stmt());
+
+            let default = if self.current_switch_default.is_some() {
+                self.current_switch_default.clone()
+            } else {
+                None
+            };
+
+            self.current_switch = sw;
+            self.brk_label = brk;
+            self.current_switch_cases = sw_cases;
+            self.current_switch_default = sw_default;
+
+            return Node::Switch {
+                cond,
+                stmt,
+                cases,
+                default,
+                brk_label,
+                token,
+            };
+        }
+
+        if self.tokenizer.consume("case") {
+            if !self.current_switch {
+                token.error("stray case");
+            }
+
+            let val = Some(self.tokenizer.cur_token().get_number());
+            self.tokenizer.next_token();
+
+            self.tokenizer.skip(":");
+            let label = self.new_unique_name();
+
+            let node = Node::Case {
+                label,
+                stmt:   Box::new(self.stmt()),
+                val,
+                token,
+            };
+
+            if let Some(cases) = &self.current_switch_cases {
+                cases.borrow_mut().push(Box::new(node.clone()));
+            }            
+
+            return node;
+        }
+
+        if self.tokenizer.consume("default") {
+            if !self.current_switch {
+                token.error("stray default");
+            }
+
+            self.tokenizer.skip(":");
+            let label = self.new_unique_name();
+
+            let node = Node::Case {
+                label,
+                stmt:   Box::new(self.stmt()),
+                val:    None,
+                token,
+            };
+
+            self.current_switch_default = Some(Box::new(node.clone()));
+
+            return node;
         }
 
         if self.tokenizer.consume("for") {

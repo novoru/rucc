@@ -51,6 +51,20 @@ pub enum Node {
         cont_label: String,
         token:      Token,
     },
+    Switch      {                                                   // "switch"
+        cond:           Box<Node>,
+        stmt:           Box<Node>,
+        cases:          Rc<RefCell<Vec<Box<Node>>>>,
+        default:        Option<Box<Node>>,
+        brk_label:      String,
+        token:          Token,
+    },
+    Case        {                                                   // "case"
+        label:  String,
+        stmt:   Box<Node>,
+        val:    Option<u64>,    // if val is None, it's "default"
+        token:  Token,
+    },
     Block       ( Vec<Box<Node>>, Token ),                          // { ... }
     ExprStmt    ( Box<Node>, Token ),                               // Expression statement
     StmtExpr    ( Box<Node>, Token ),                               // Statement Expression
@@ -218,6 +232,8 @@ impl Node {
             Node::Return    ( .., token )   |
             Node::If        { token, .. }   |
             Node::For       { token, .. }   |
+            Node::Switch    { token, .. }   |
+            Node::Case      { token, .. }   |
             Node::Block     ( .., token )   |
             Node::ExprStmt  ( .., token )   |
             Node::StmtExpr  ( .., token )   |
@@ -285,6 +301,8 @@ impl Node {
                 }
                 body.resolve_goto_labels(labels);
             },
+            Node::Switch    { stmt, .. }    |
+            Node::Case      { stmt, .. }    =>  stmt.resolve_goto_labels(labels),
             Node::Block     ( ref mut stmts, .. )   =>  {
                 for stmt in stmts {
                     stmt.resolve_goto_labels(labels);
@@ -320,5 +338,5 @@ impl Node {
             Node::Cast  { expr, .. }    =>  expr.resolve_goto_labels(labels),
             _   =>  return,
         }        
-    } 
+    }
 }

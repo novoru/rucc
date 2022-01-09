@@ -6,7 +6,8 @@ use crate::ty::*;
 static KWDS: &'static [&str] = &[
     "return", "if", "for", "while", "int", "sizeof", "char",
     "struct", "union", "short", "long", "void", "typedef", "_Bool",
-    "enum", "static", "goto", "break", "continue",
+    "enum", "static", "goto", "break", "continue", "switch", "case",
+    "default",
 ];
 
 static KW: &'static [&str] = &[
