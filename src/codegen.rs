@@ -303,6 +303,24 @@ impl CodeGenerator {
                 writeln!(self.output, "  setle %al").unwrap();
                 writeln!(self.output, "  movzb %al, %rax").unwrap();
             },
+            Node::Shl { lhs, rhs, .. }  =>  {
+                let (ax, _) = reg_name(lhs);
+                self.gen_expr(rhs);
+                self.push();
+                self.gen_expr(lhs);
+                self.pop("%rdi");
+                writeln!(self.output, "  mov %rdi, %rcx").unwrap();
+                writeln!(self.output, "  shl %cl, {}", ax).unwrap();
+            },
+            Node::Shr { lhs, rhs, .. }  =>  {
+                let (ax, _) = reg_name(lhs);
+                self.gen_expr(rhs);
+                self.push();
+                self.gen_expr(lhs);
+                self.pop("%rdi");
+                writeln!(self.output, "  mov %rdi, %rcx").unwrap();
+                writeln!(self.output, "  sar %cl, {}", ax).unwrap();
+            },
             Node::Deref (expr, ..)  =>  {
                 self.gen_expr(expr);
                 self.load(node.get_type());

@@ -18,6 +18,8 @@ pub enum Node {
     BitOr       { lhs: Box<Node>, rhs: Box<Node>, token: Token },   // |
     BitXor      { lhs: Box<Node>, rhs: Box<Node>, token: Token },   // ^
     Neg         ( Box<Node>, Token ),                               // unary -
+    Shl         { lhs: Box<Node>, rhs: Box<Node>, token: Token },   // <<
+    Shr         { lhs: Box<Node>, rhs: Box<Node>, token: Token },   // >>
     Eq          { lhs: Box<Node>, rhs: Box<Node>, token: Token },   // ==
     Ne          { lhs: Box<Node>, rhs: Box<Node>, token: Token },   // !=
     Lt          { lhs: Box<Node>, rhs: Box<Node>, token: Token },   // <
@@ -132,6 +134,8 @@ impl Node {
             Node::BitOr  { lhs, rhs, .. }   |
             Node::BitXor { lhs, rhs, .. }   =>  get_common_type(lhs.get_type(), rhs.get_type()),
             Node::Neg (..)              =>  Rc::new(RefCell::new(ty_long(None))),
+            Node::Shl { lhs, .. }       |
+            Node::Shr { lhs, .. }       =>  lhs.get_type(),
             Node::Eq { .. }             |
             Node::Ne { .. }             |
             Node::Lt { .. }             |
@@ -216,6 +220,8 @@ impl Node {
             Node::BitOr     { token, .. }   |
             Node::BitXor    { token, .. }   |
             Node::Neg       ( .., token )   |
+            Node::Shl       { token, .. }   |
+            Node::Shr       { token, .. }   |
             Node::Eq        { token, .. }   |
             Node::Ne        { token, .. }   |
             Node::Lt        { token, .. }   |
@@ -263,6 +269,8 @@ impl Node {
                 rhs.resolve_goto_labels(labels);
             },
             Node::Neg   (expr, ..)  =>  expr.resolve_goto_labels(labels),
+            Node::Shl       { lhs, rhs, .. }  |
+            Node::Shr       { lhs, rhs, .. }  |
             Node::Eq        { lhs, rhs, .. }  |
             Node::Ne        { lhs, rhs, .. }  |
             Node::Lt        { lhs, rhs, .. }  |

@@ -1020,6 +1020,34 @@ impl Parser {
                 rhs:    Box::new(rhs),
                 token:  token.clone(),
             })
+        } else if op == "<<=" {
+            Box::new(Node::Shl {
+                lhs:    Box::new(Node::Deref(
+                    Box::new(Node::Var{
+                        name:   token.literal.clone(),
+                        ty:     Rc::new(RefCell::new(ty_ptr(None, Some(lhs.get_type())))),
+                        token:  token.clone(),
+                        obj:    Rc::clone(&var),
+                    }),
+                    token.clone(),
+                )),
+                rhs:    Box::new(rhs),
+                token:  token.clone(),
+            })
+        } else if op == ">>=" {
+            Box::new(Node::Shr {
+                lhs:    Box::new(Node::Deref(
+                    Box::new(Node::Var{
+                        name:   token.literal.clone(),
+                        ty:     Rc::new(RefCell::new(ty_ptr(None, Some(lhs.get_type())))),
+                        token:  token.clone(),
+                        obj:    Rc::clone(&var),
+                    }),
+                    token.clone(),
+                )),
+                rhs:    Box::new(rhs),
+                token:  token.clone(),
+            })
         } else {
             unreachable!();
         };
@@ -1063,7 +1091,8 @@ impl Parser {
         if  self.tokenizer.consume("+=") || self.tokenizer.consume("-=") ||
             self.tokenizer.consume("*=") || self.tokenizer.consume("/=") ||
             self.tokenizer.consume("%=") || self.tokenizer.consume("&=") || 
-            self.tokenizer.consume("|=") || self.tokenizer.consume("^=") {
+            self.tokenizer.consume("|=") || self.tokenizer.consume("^=") ||
+            self.tokenizer.consume("<<=") || self.tokenizer.consume(">>="){
             let rhs = self.assign();
             return self.to_assign(node, rhs, token, &op);
         }
@@ -1213,16 +1242,16 @@ impl Parser {
         }
     }
 
-    // relational = add ("<" add | "<=" add | ">" add | ">=" add)*
+    // relational = shift ("<" shift | "<=" shift | ">" shift | ">=" shift)*
     fn relational(&mut self) -> Node {
-        let mut node = self.add();
+        let mut node = self.shift();
 
         loop {
             let token = self.tokenizer.cur_token().clone();
             if self.tokenizer.consume("<") {
                 node = Node::Lt {
                     lhs: Box::new(node),
-                    rhs: Box::new(self.add()),
+                    rhs: Box::new(self.shift()),
                     token,
                 };
                 continue;
@@ -1231,7 +1260,7 @@ impl Parser {
             if self.tokenizer.consume("<=") {
                 node = Node::Le {
                     lhs: Box::new(node),
-                    rhs: Box::new(self.add()),
+                    rhs: Box::new(self.shift()),
                     token,
                 };
                 continue;
@@ -1239,7 +1268,7 @@ impl Parser {
             
             if self.tokenizer.consume(">") {
                 node = Node::Lt {
-                    lhs: Box::new(self.add()),
+                    lhs: Box::new(self.shift()),
                     rhs: Box::new(node),
                     token,
                 };
@@ -1248,8 +1277,36 @@ impl Parser {
             
             if self.tokenizer.consume(">=") {
                 node = Node::Le {
-                    lhs: Box::new(self.add()),
+                    lhs: Box::new(self.shift()),
                     rhs: Box::new(node),
+                    token,
+                };
+                continue;
+            }
+
+            return node;
+        }
+    }
+
+    // shift = add ("<<" and | ">>" add)*
+    fn shift(&mut self) -> Node {
+        let mut node = self.add();
+
+        loop {
+            let token = self.tokenizer.cur_token().clone();
+            if self.tokenizer.consume("<<") {
+                node = Node::Shl {
+                    lhs:    Box::new(node),
+                    rhs:    Box::new(self.add()),
+                    token,
+                };
+                continue;
+            }
+            
+            if self.tokenizer.consume(">>") {
+                node = Node::Shr {
+                    lhs:    Box::new(node),
+                    rhs:    Box::new(self.add()),
                     token,
                 };
                 continue;
