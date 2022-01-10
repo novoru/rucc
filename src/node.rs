@@ -370,4 +370,64 @@ impl Node {
             _   =>  return,
         }        
     }
+
+    pub fn eval(&self) -> u64 {
+        match self {
+            Node::Add       { lhs, rhs, .. }            =>  {
+                match get_common_type(lhs.get_type(), rhs.get_type()).borrow().size {
+                    4   =>  (lhs.eval() as u32).wrapping_add(rhs.eval() as u32) as u64,
+                    _   =>  lhs.eval().wrapping_add(rhs.eval()),
+                }
+            },
+            Node::Sub       { lhs, rhs, .. }            =>  {
+                match get_common_type(lhs.get_type(), rhs.get_type()).borrow().size {
+                    4   =>  (lhs.eval() as u32).wrapping_sub(rhs.eval() as u32) as u64,
+                    _   =>  lhs.eval().wrapping_sub(rhs.eval()),
+                }
+            },
+            Node::Mul       { lhs, rhs, .. }            =>  {
+                match get_common_type(lhs.get_type(), rhs.get_type()).borrow().size {
+                    4   =>  (lhs.eval() as u32).wrapping_mul(rhs.eval() as u32) as u64,
+                    _   =>  lhs.eval().wrapping_mul(rhs.eval()),
+                }
+            },
+            Node::Div       { lhs, rhs, .. }            =>  {
+                match get_common_type(lhs.get_type(), rhs.get_type()).borrow().size {
+                    4   =>  (lhs.eval() as u32).wrapping_div(rhs.eval() as u32) as u64,
+                    _   =>  lhs.eval().wrapping_div(rhs.eval()),
+                }
+            },
+            Node::Mod       { lhs, rhs, .. }            =>  lhs.eval() % rhs.eval(),
+            Node::BitAnd    { lhs, rhs, .. }            =>  lhs.eval() & rhs.eval(),
+            Node::BitOr     { lhs, rhs, .. }            =>  lhs.eval() | rhs.eval(),
+            Node::BitXor    { lhs, rhs, .. }            =>  lhs.eval() ^ rhs.eval(),
+            Node::Neg       ( expr, .. )                =>  (-(expr.eval() as i64)) as u64,
+            Node::Shl       { lhs, rhs, .. }            =>  lhs.eval() << rhs.eval(),
+            Node::Shr       { lhs, rhs, .. }            =>  lhs.eval() >> rhs.eval(),
+            Node::Eq        { lhs, rhs, .. }            =>  (lhs.eval() == rhs.eval()) as u64,
+            Node::Ne        { lhs, rhs, .. }            =>  (lhs.eval() != rhs.eval()) as u64,
+            Node::Lt        { lhs, rhs, .. }            =>  (lhs.eval() < rhs.eval()) as u64,
+            Node::Le        { lhs, rhs, .. }            =>  (lhs.eval() >= rhs.eval()) as u64,
+            Node::Cond      { cond, then, els, .. }     =>  if cond.eval() != 0 { then.eval() } else { els.eval() }
+            Node::Comma     { rhs, .. }                 =>  rhs.eval(),
+            Node::Not       ( expr, .. )                =>  !(expr.eval() != 0) as u64,
+            Node::BitNot    ( expr, .. )                =>  !expr.eval(),
+            Node::LogAnd    { lhs, rhs, .. }            =>  (lhs.eval() != 0 && rhs.eval() != 0) as u64,
+            Node::LogOr     { lhs, rhs, .. }            =>  (lhs.eval() != 0 || rhs.eval() != 0) as u64,
+            Node::Num       ( val, .. )                 =>  *val,
+            Node::Cast      { expr, ty,.. }             =>  {
+                if ty.borrow().is_num() {
+                    match ty.borrow().size {
+                        1   =>  return expr.eval() as u8 as u64,
+                        2   =>  return expr.eval() as u16 as u64,
+                        4   =>  return expr.eval() as u32 as u64,
+                        _   =>  (),
+                    }
+                }
+
+                expr.eval()
+            },
+            _   =>  self.get_token().error("not a compile-time constant"),
+        }
+    }
 }

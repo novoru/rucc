@@ -299,7 +299,7 @@ impl Parser {
         )))
     }
 
-    // array-dimensions = num? "]" type-suffix
+    // array-dimensions = const-expr? "]" type-suffix
     fn array_dimensions(&mut self, mut ty: Rc<RefCell<Type>>) -> Rc<RefCell<Type>> {
         if self.tokenizer.consume("]") {
             ty = Rc::clone(&self.type_suffix(ty));
@@ -312,8 +312,7 @@ impl Parser {
             )));
         }
 
-        let sz = self.tokenizer.cur_token().get_number();
-        self.tokenizer.next_token();
+        let sz = self.const_expr();
         self.tokenizer.skip("]");
         ty = Rc::clone(&self.type_suffix(ty.clone()));
         
@@ -448,8 +447,7 @@ impl Parser {
             self.tokenizer.next_token();
 
             if self.tokenizer.consume("=") {
-                val = self.tokenizer.cur_token().get_number();
-                self.tokenizer.next_token();
+                val = self.const_expr();
             }
 
             let constant = enum_const(name, val);
@@ -638,8 +636,7 @@ impl Parser {
                 token.error("stray case");
             }
 
-            let val = Some(self.tokenizer.cur_token().get_number());
-            self.tokenizer.next_token();
+            let val = Some(self.const_expr());
 
             self.tokenizer.skip(":");
             let label = self.new_unique_name();
@@ -883,6 +880,12 @@ impl Parser {
         }
 
         node
+    }
+
+    fn const_expr(&mut self) -> u64 {
+        let node = self.conditional();
+        
+        node.eval()
     }
 
     // Convert `A op= B` to `tmp = &A, *tmp = *tmp op B`
